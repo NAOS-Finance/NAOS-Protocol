@@ -526,6 +526,15 @@
   "resolved" "https://registry.npmjs.org/@nomiclabs/hardhat-ethers/-/hardhat-ethers-2.0.2.tgz"
   "version" "2.0.2"
 
+"@nomiclabs/hardhat-ganache@^2.0.0":
+  "integrity" "sha512-JJI4+5bHZUoeuIZL42usxp+0i/krYnoApzzA2Xii1P7DwrZHwFBa2OCtR1sUq5z3VTSTvQKrJ1d2/Y6CoQGTKQ=="
+  "resolved" "https://registry.npmjs.org/@nomiclabs/hardhat-ganache/-/hardhat-ganache-2.0.0.tgz"
+  "version" "2.0.0"
+  dependencies:
+    "debug" "^4.1.1"
+    "ganache-core" "^2.7.0"
+    "ts-interface-checker" "^0.1.9"
+
 "@nomiclabs/hardhat-waffle@^2.0.1":
   "integrity" "sha512-2YR2V5zTiztSH9n8BYWgtv3Q+EL0N5Ltm1PAr5z20uAY4SkkfylJ98CIqt18XFvxTD5x4K2wKBzddjV9ViDAZQ=="
   "resolved" "https://registry.npmjs.org/@nomiclabs/hardhat-waffle/-/hardhat-waffle-2.0.1.tgz"
@@ -3611,7 +3620,7 @@
   "resolved" "https://registry.npmjs.org/functional-red-black-tree/-/functional-red-black-tree-1.0.1.tgz"
   "version" "1.0.1"
 
-"ganache-core@^2.13.2":
+"ganache-core@^2.13.2", "ganache-core@^2.7.0":
   "integrity" "sha512-tIF5cR+ANQz0+3pHWxHjIwHqFXcVo0Mb+kcsNhglNFALcYo49aQpnS9dqHartqPfMFjiHh/qFoD3mYK0d/qGgw=="
   "resolved" "https://registry.npmjs.org/ganache-core/-/ganache-core-2.13.2.tgz"
   "version" "2.13.2"
@@ -6959,6 +6968,11 @@
     "prettier" "^2.1.2"
     "resolve" "^1.8.1"
     "ts-essentials" "^1.0.0"
+
+"ts-interface-checker@^0.1.9":
+  "integrity" "sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA=="
+  "resolved" "https://registry.npmjs.org/ts-interface-checker/-/ts-interface-checker-0.1.13.tgz"
+  "version" "0.1.13"
 
 "tslib@^1.9.3":
   "integrity" "sha512-Xni35NKzjgMrwevysHTCArtLDpPvye8zV/0E4EyYn43P7/7qvQwPh9BGkHewbMulVntbigmcT7rdX3BNo9wRJg=="
