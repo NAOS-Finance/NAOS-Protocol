@@ -14,7 +14,10 @@ git submodule update
 
 ## Contract compile
 ```
-npx hardhat compile
+npm run compile
 ```
-
+## Contract test
+```
+npm test
+```
 
