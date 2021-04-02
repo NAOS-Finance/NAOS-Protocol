@@ -129,11 +129,11 @@ describe("ERC721 Borrow", function () {
     await root.relyContract(juniorMemberlist.address, signer.address)
     await root.relyContract(seniorMemberlist.address, signer.address)
 
-    return { signer, root, borrowerDeployer, lenderDeployer, shelf, pile, title, collector, nftFeed, assessor, reserve, coordinator, juniorTranche, seniorTranche, juniorToken, seniorToken, juniorOperator, seniorOperator, juniorMemberlist, seniorMemberlist }
+    return { erc20, signer, root, borrowerDeployer, lenderDeployer, shelf, pile, title, collector, nftFeed, assessor, reserve, coordinator, juniorTranche, seniorTranche, juniorToken, seniorToken, juniorOperator, seniorOperator, juniorMemberlist, seniorMemberlist }
   }
 
   it("should setup loan", async function () {
-    const { signer, root, borrowerDeployer, lenderDeployer, shelf, pile, title, collector, nftFeed, assessor, reserve, coordinator, juniorTranche, seniorTranche, juniorToken, seniorToken, juniorOperator, seniorOperator, juniorMemberlist, seniorMemberlist } = await setupContracts()
+    const { erc20, signer, root, borrowerDeployer, lenderDeployer, shelf, pile, title, collector, nftFeed, assessor, reserve, coordinator, juniorTranche, seniorTranche, juniorToken, seniorToken, juniorOperator, seniorOperator, juniorMemberlist, seniorMemberlist } = await setupContracts()
     console.log(`Signer: ${signer.address}`)
     console.log(`Root address: ${root.address}`)
     console.log(`Borrower deployer address: ${borrowerDeployer.address}`)
@@ -147,11 +147,11 @@ describe("ERC721 Borrow", function () {
     // 10 ether
     const nftPrice = ten.mul(ether)
     const riskGroup = 2
-    const abiCoder = new ethers.utils.AbiCoder()
+    // const abiCoder = new ethers.utils.AbiCoder()
     const signers = await ethers.getSigners()
     const borrowerAccount = signers[1]
-    // const investorAccount = signers[2]
-    // const investorAccount = signers[3]
+    const juniorInvestor = signers[2]
+    const seniorInvestor = signers[3]
     // issue loan
     await nft.issue(borrowerAccount.address)
     const tokenID = (await nft.count()).sub(1)
@@ -169,11 +169,29 @@ describe("ERC721 Borrow", function () {
     await shelf.connect(borrowerAccount).issue(nft.address, tokenID)
     const ceiling = await nftFeed.ceiling(loan)
     await nft.connect(borrowerAccount).setApprovalForAll(shelf.address, true)
-    // TODO: invest
+    const validUntil = Math.floor((new Date).getTime() / 1000) + 8 * 86400
+    const ONE = ten.pow(27)
+
+    juniorMemberlist.updateMember(juniorInvestor.address, validUntil)
+    seniorMemberlist.updateMember(seniorInvestor.address, validUntil)
+
+    const jAmount = ceiling.mul(ten.pow(25)).mul(82).div(ONE)
+    const sAmount = ceiling.mul(ten.pow(25)).mul(18).div(ONE)
+
+    await erc20.mint(juniorInvestor.address, jAmount)
+    await erc20.connect(juniorInvestor).approve(juniorTranche.address, jAmount)
+    await erc20.mint(seniorInvestor.address, sAmount)
+    await erc20.connect(seniorInvestor).approve(seniorTranche.address, sAmount)
+
+    await juniorOperator.connect(juniorInvestor).supplyOrder(jAmount)
+    await seniorOperator.connect(seniorInvestor).supplyOrder(sAmount)
+    // add one day (minimum times)
+    await ethers.provider.send('evm_increaseTime', [ 86400 ])
+    await coordinator.closeEpoch()
     // make sure there are investment
     // withdraw loan
-    // await shelf.connect(borrowerAccount).lock(loan)
-    // await shelf.connect(borrowerAccount).borrow(loan, ceiling)
-    // await shelf.connect(borrowerAccount).withdraw(loan, ceiling, borrowerAccount.address)
-  })
+    await shelf.connect(borrowerAccount).lock(loan)
+    await shelf.connect(borrowerAccount).borrow(loan, ceiling)
+    await shelf.connect(borrowerAccount).withdraw(loan, ceiling, borrowerAccount.address)
+  }, 60000)
 })
