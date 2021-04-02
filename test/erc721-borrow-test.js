@@ -1,13 +1,15 @@
+const { BigNumber } = require("@ethersproject/bignumber")
 const { expect } = require("chai")
 const { ethers } = require("hardhat")
+const { ContractFunctionVisibility } = require("hardhat/internal/hardhat-network/stack-traces/model")
 
 describe("ERC721 Borrow", function () {
   const tokenName = "NAOS Loan Token"
   const tokenSymbol = "NAOS20"
 
-  async function setupERC721() {
-    const NAOSNFT = await ethers.getContractFactory("NAOSNFT")
-    return await NAOSNFT.deploy()
+  async function setupNFT() {
+    const Title = await ethers.getContractFactory("Title")
+    return await Title.deploy("Collateral NFT", "collateralNFT")
   }
 
   async function setupERC20() {
@@ -22,7 +24,6 @@ describe("ERC721 Borrow", function () {
     expect(await erc20.name()).to.equal(tokenName)
     expect(await erc20.symbol()).to.equal(tokenSymbol)
     const signer = await ethers.getSigner()
-
     const Root = await ethers.getContractFactory("TinlakeRoot")
     const root = await Root.deploy(signer.address)
 
@@ -43,14 +44,25 @@ describe("ERC721 Borrow", function () {
     const navFeedFab = await NAVFeedFab.deploy()
 
     const BorrowerDeployer = await ethers.getContractFactory("BorrowerDeployer")
-    const borrower = await BorrowerDeployer.deploy(root.address, titleFab.address, shelfFab.address, pileFab.address, collectorFab.address, navFeedFab.address, erc20.address, tokenName, tokenSymbol, discountRate)
+    const borrowerDeployer = await BorrowerDeployer.deploy(root.address, titleFab.address, shelfFab.address, pileFab.address, collectorFab.address, navFeedFab.address, erc20.address, tokenName, tokenSymbol, discountRate)
 
-    await borrower.deployTitle()
-    await borrower.deployPile()
-    await borrower.deployFeed()
-    await borrower.deployShelf()
-    await borrower.deployCollector()
-    await borrower.deploy()
+    await borrowerDeployer.deployTitle()
+    await borrowerDeployer.deployPile()
+    await borrowerDeployer.deployFeed()
+    await borrowerDeployer.deployShelf()
+    await borrowerDeployer.deployCollector()
+    await borrowerDeployer.deploy()
+
+    const Shelf = await ethers.getContractFactory("Shelf")
+    const shelf = Shelf.attach(await borrowerDeployer.shelf())
+    const Pile = await ethers.getContractFactory("Pile")
+    const pile = Pile.attach(await borrowerDeployer.pile())
+    const Title = await ethers.getContractFactory("Title")
+    const title = Title.attach(await borrowerDeployer.title())
+    const Collector = await ethers.getContractFactory("Collector")
+    const collector = Collector.attach(await borrowerDeployer.collector())
+    const NAVFeed = await ethers.getContractFactory("NAVFeed")
+    const nftFeed = NAVFeed.attach(await borrowerDeployer.feed())
 
     // setup lender
     const ReserveFab = await ethers.getContractFactory("ReserveFab")
@@ -75,27 +87,93 @@ describe("ERC721 Borrow", function () {
     const coordinatorFab = await CoordinatorFab.deploy()
 
     const LenderDeployer = await ethers.getContractFactory("LenderDeployer")
-    const lender = await LenderDeployer.deploy(root.address, erc20.address, trancheFab.address, memberlistFab.address, restrictedTokenFab.address, reserveFab.address, assessorFab.address, coordinatorFab.address, operatorFab.address)
+    const lenderDeployer = await LenderDeployer.deploy(root.address, erc20.address, trancheFab.address, memberlistFab.address, restrictedTokenFab.address, reserveFab.address, assessorFab.address, coordinatorFab.address, operatorFab.address)
     const tenp25 = BigNumber.from(10).pow(25)
-    // await lender.init(BigNumber.from(75).mul(tenp25), BigNumber.from(85).mul(tenp25), 10, 60*60, BigNumber.from('1000000229200000000000000000'), "Drop Token", "Drop", "Tin Token", "Tin")
-    // await lender.deployJunior()
-    // await lender.deploySenior()
-    // await lender.deployReserve()
-    // await lender.deployAssessor()
-    // await lender.deployCoordinator()
-    // await lender.deploy()
+    await lenderDeployer.init(BigNumber.from(75).mul(tenp25), BigNumber.from(85).mul(tenp25), 10, 60*60, BigNumber.from('1000000229200000000000000000'), "Drop Token", "Drop", "Tin Token", "Tin")
+    await lenderDeployer.deployJunior()
+    await lenderDeployer.deploySenior()
+    await lenderDeployer.deployReserve()
+    await lenderDeployer.deployAssessor()
+    await lenderDeployer.deployCoordinator()
+    await lenderDeployer.deploy()
 
-    await root.prepare(lender.address, borrower.address, signer.address)
+    const Assessor = await ethers.getContractFactory("Assessor")
+    const assessor = Assessor.attach(await lenderDeployer.assessor())
+    const Reserve = await ethers.getContractFactory("Reserve")
+    const reserve = Reserve.attach(await lenderDeployer.reserve())
+    const EpochCoordinator = await ethers.getContractFactory("EpochCoordinator")
+    const coordinator = EpochCoordinator.attach(await lenderDeployer.coordinator())
+    const Tranche = await ethers.getContractFactory("Tranche")
+    const seniorTranche = Tranche.attach(await lenderDeployer.seniorTranche())
+    const juniorTranche = Tranche.attach(await lenderDeployer.juniorTranche())
+    const Operator = await ethers.getContractFactory("Operator")
+    const juniorOperator = Operator.attach(await lenderDeployer.juniorOperator())
+    const seniorOperator = Operator.attach(await lenderDeployer.seniorOperator())
+    const RestrictedToken = await ethers.getContractFactory("RestrictedToken")
+    const seniorToken = RestrictedToken.attach(await lenderDeployer.seniorToken())
+    const juniorToken = RestrictedToken.attach(await lenderDeployer.juniorToken())
+    const Memberlist = await ethers.getContractFactory("Memberlist")
+    const juniorMemberlist = Memberlist.attach(await lenderDeployer.juniorMemberlist())
+    const seniorMemberlist = Memberlist.attach(await lenderDeployer.seniorMemberlist())
+
+    await root.prepare(lenderDeployer.address, borrowerDeployer.address, signer.address)
     await root.deploy()
 
-    return { root, borrower, lender }
+    // set first user as admin
+    await root.relyContract(title.address, signer.address)
+    await root.relyContract(shelf.address, signer.address)
+    await root.relyContract(pile.address, signer.address)
+    await root.relyContract(nftFeed.address, signer.address)
+    await root.relyContract(collector.address, signer.address)
+
+    await root.relyContract(juniorMemberlist.address, signer.address)
+    await root.relyContract(seniorMemberlist.address, signer.address)
+
+    return { signer, root, borrowerDeployer, lenderDeployer, shelf, pile, title, collector, nftFeed, assessor, reserve, coordinator, juniorTranche, seniorTranche, juniorToken, seniorToken, juniorOperator, seniorOperator, juniorMemberlist, seniorMemberlist }
   }
 
-  it("should setup contracts", async function () {
-    const { root, borrower, lender } = await setupContracts()
-    console.log(root.address, borrower.address, lender.address)
-    expect(root.address).to.equal(40)
-    const erc721 = await setupERC721()
-    console.log(erc721.name)
+  it("should setup loan", async function () {
+    const { signer, root, borrowerDeployer, lenderDeployer, shelf, pile, title, collector, nftFeed, assessor, reserve, coordinator, juniorTranche, seniorTranche, juniorToken, seniorToken, juniorOperator, seniorOperator, juniorMemberlist, seniorMemberlist } = await setupContracts()
+    console.log(`Signer: ${signer.address}`)
+    console.log(`Root address: ${root.address}`)
+    console.log(`Borrower deployer address: ${borrowerDeployer.address}`)
+    console.log(`Lender deployer address: ${lenderDeployer.address}`)
+    expect(root.address.length).to.equal(42)
+    expect(borrowerDeployer.address.length).to.equal(42)
+    expect(lenderDeployer.address.length).to.equal(42)
+    const nft = await setupNFT()
+    const ten = BigNumber.from('10')
+    const ether = ten.pow(18)
+    // 10 ether
+    const nftPrice = ten.mul(ether)
+    const riskGroup = 2
+    const abiCoder = new ethers.utils.AbiCoder()
+    const signers = await ethers.getSigners()
+    const borrowerAccount = signers[1]
+    // const investorAccount = signers[2]
+    // const investorAccount = signers[3]
+    // issue loan
+    await nft.issue(borrowerAccount.address)
+    const tokenID = (await nft.count()).sub(1)
+    // 30 days
+    const maturityDate = 60000 * 86400
+    // it's different with keccak256(abi.encodePacked(registry, tokenId))
+    // const tokenKey = ethers.utils.keccak256(abiCoder.encode([{ type: 'address' }, { type: 'uint256' }], [nft.address, tokenID]))
+    const tokenKey = await nftFeed.callStatic['nftID(address,uint256)'](nft.address, tokenID)
+    // set nft price and risk
+    console.log(`Borrow NFT identifier ${tokenKey}`)
+    await nftFeed['update(bytes32,uint256,uint256)'](tokenKey, nftPrice, riskGroup)
+    await nftFeed['file(bytes32,bytes32,uint256)']('0x' + Buffer.from("maturityDate").toString('hex').padEnd(64, '0'), tokenKey, maturityDate)
+    // issue nft
+    const loan = await shelf.connect(borrowerAccount).callStatic.issue(nft.address, tokenID)
+    await shelf.connect(borrowerAccount).issue(nft.address, tokenID)
+    const ceiling = await nftFeed.ceiling(loan)
+    await nft.connect(borrowerAccount).setApprovalForAll(shelf.address, true)
+    // TODO: invest
+    // make sure there are investment
+    // withdraw loan
+    // await shelf.connect(borrowerAccount).lock(loan)
+    // await shelf.connect(borrowerAccount).borrow(loan, ceiling)
+    // await shelf.connect(borrowerAccount).withdraw(loan, ceiling, borrowerAccount.address)
   })
 })
