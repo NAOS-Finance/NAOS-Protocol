@@ -156,7 +156,7 @@ describe("ERC721 Borrow", function () {
     await nft.issue(borrowerAccount.address)
     const tokenID = (await nft.count()).sub(1)
     // 30 days
-    const maturityDate = 60000 * 86400
+    const maturityDate = 1700000000
     // it's different with keccak256(abi.encodePacked(registry, tokenId))
     // const tokenKey = ethers.utils.keccak256(abiCoder.encode([{ type: 'address' }, { type: 'uint256' }], [nft.address, tokenID]))
     const tokenKey = await nftFeed.callStatic['nftID(address,uint256)'](nft.address, tokenID)
