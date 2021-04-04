@@ -164,30 +164,42 @@ describe("ERC721 Borrow", function () {
     console.log(`Borrow NFT identifier ${tokenKey}`)
     await nftFeed['update(bytes32,uint256,uint256)'](tokenKey, nftPrice, riskGroup)
     await nftFeed['file(bytes32,bytes32,uint256)']('0x' + Buffer.from("maturityDate").toString('hex').padEnd(64, '0'), tokenKey, maturityDate)
+    console.log('Issue nft')
     // issue nft
     const loan = await shelf.connect(borrowerAccount).callStatic.issue(nft.address, tokenID)
     await shelf.connect(borrowerAccount).issue(nft.address, tokenID)
     const ceiling = await nftFeed.ceiling(loan)
     await nft.connect(borrowerAccount).setApprovalForAll(shelf.address, true)
-    const validUntil = Math.floor((new Date).getTime() / 1000) + 8 * 86400
+    const validUntil = (new Date).getTime() + 30 * 86400 * 1000
     const ONE = ten.pow(27)
+    console.log('Invest the token')
 
-    juniorMemberlist.updateMember(juniorInvestor.address, validUntil)
-    seniorMemberlist.updateMember(seniorInvestor.address, validUntil)
+    await juniorMemberlist.updateMember(juniorInvestor.address, validUntil)
+    expect((await juniorMemberlist.members(juniorInvestor.address)).toString()).equal(validUntil.toString())
+    await seniorMemberlist.updateMember(seniorInvestor.address, validUntil)
+    expect((await seniorMemberlist.members(seniorInvestor.address)).toString()).equal(validUntil.toString())
 
     const jAmount = ceiling.mul(ten.pow(25)).mul(82).div(ONE)
     const sAmount = ceiling.mul(ten.pow(25)).mul(18).div(ONE)
 
     await erc20.mint(juniorInvestor.address, jAmount)
-    await erc20.connect(juniorInvestor).approve(juniorTranche.address, jAmount)
+    expect((await erc20.balanceOf(juniorInvestor.address)).toString()).to.equal(jAmount.toString())
     await erc20.mint(seniorInvestor.address, sAmount)
-    await erc20.connect(seniorInvestor).approve(seniorTranche.address, sAmount)
+    expect((await erc20.balanceOf(seniorInvestor.address)).toString()).to.equal(sAmount.toString())
 
+    await erc20.connect(juniorInvestor).approve(juniorTranche.address, jAmount)
+    expect((await erc20.allowance(juniorInvestor.address, juniorTranche.address)).toString()).to.equal(jAmount.toString())
+    await erc20.connect(seniorInvestor).approve(seniorTranche.address, sAmount)
+    expect((await erc20.allowance(seniorInvestor.address, seniorTranche.address)).toString()).to.equal(sAmount.toString())
+
+    console.log('Supply order')
     await juniorOperator.connect(juniorInvestor).supplyOrder(jAmount)
     await seniorOperator.connect(seniorInvestor).supplyOrder(sAmount)
     // add one day (minimum times)
     await ethers.provider.send('evm_increaseTime', [ 86400 ])
     await coordinator.closeEpoch()
+    // should not start the challenge period
+    expect(await coordinator.submissionPeriod()).to.equal(false)
     // make sure there are investment
     // withdraw loan
     await shelf.connect(borrowerAccount).lock(loan)
