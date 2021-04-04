@@ -89,7 +89,7 @@ describe("ERC721 Borrow", function () {
     const LenderDeployer = await ethers.getContractFactory("LenderDeployer")
     const lenderDeployer = await LenderDeployer.deploy(root.address, erc20.address, trancheFab.address, memberlistFab.address, restrictedTokenFab.address, reserveFab.address, assessorFab.address, coordinatorFab.address, operatorFab.address)
     const tenp25 = BigNumber.from(10).pow(25)
-    await lenderDeployer.init(BigNumber.from(75).mul(tenp25), BigNumber.from(85).mul(tenp25), 10, 60*60, BigNumber.from('1000000229200000000000000000'), "Drop Token", "Drop", "Tin Token", "Tin")
+    await lenderDeployer.init(BigNumber.from(0).mul(tenp25), BigNumber.from(85).mul(tenp25), BigNumber.from('5000000000000000001'), 60*60, BigNumber.from('1000000229200000000000000000'), "Drop Token", "Drop", "Tin Token", "Tin")
     await lenderDeployer.deployJunior()
     await lenderDeployer.deploySenior()
     await lenderDeployer.deployReserve()
@@ -197,6 +197,7 @@ describe("ERC721 Borrow", function () {
     await seniorOperator.connect(seniorInvestor).supplyOrder(sAmount)
     // add one day (minimum times)
     await ethers.provider.send('evm_increaseTime', [ 86400 ])
+    // should care about these variables when init: minSeniorRatio_, maxSeniorRatio_, maxReserve_
     await coordinator.closeEpoch()
     // should not start the challenge period
     expect(await coordinator.submissionPeriod()).to.equal(false)
