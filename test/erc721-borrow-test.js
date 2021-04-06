@@ -206,5 +206,9 @@ describe("ERC721 Borrow", function () {
     await shelf.connect(borrowerAccount).lock(loan)
     await shelf.connect(borrowerAccount).borrow(loan, ceiling)
     await shelf.connect(borrowerAccount).withdraw(loan, ceiling, borrowerAccount.address)
+    // check
+    expect((await nftFeed.ceiling(loan)).toString()).to.equal('0')
+    expect(await nft.ownerOf(tokenID)).to.equal(shelf.address)
+    expect((await erc20.balanceOf(borrowerAccount.address)).toString()).to.equal(ceiling.toString())
   }, 60000)
 })
