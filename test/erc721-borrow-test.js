@@ -3,6 +3,10 @@ const { expect } = require("chai")
 const { ethers } = require("hardhat")
 const { ContractFunctionVisibility } = require("hardhat/internal/hardhat-network/stack-traces/model")
 
+const timeFly = async (days) => {
+  return await ethers.provider.send('evm_increaseTime', [ days * 86400 ])
+}
+
 describe("ERC721 Borrow", function () {
   const tokenName = "NAOS Loan Token"
   const tokenSymbol = "NAOS20"
@@ -196,7 +200,7 @@ describe("ERC721 Borrow", function () {
     await juniorOperator.connect(juniorInvestor).supplyOrder(jAmount)
     await seniorOperator.connect(seniorInvestor).supplyOrder(sAmount)
     // add one day (minimum times)
-    await ethers.provider.send('evm_increaseTime', [ 86400 ])
+    await timeFly(1)
     // should care about these variables when init: minSeniorRatio_, maxSeniorRatio_, maxReserve_
     await coordinator.closeEpoch()
     // should not start the challenge period
@@ -210,5 +214,27 @@ describe("ERC721 Borrow", function () {
     expect((await nftFeed.ceiling(loan)).toString()).to.equal('0')
     expect(await nft.ownerOf(tokenID)).to.equal(shelf.address)
     expect((await erc20.balanceOf(borrowerAccount.address)).toString()).to.equal(ceiling.toString())
+
+    // repay
+    // mint money to borrower
+    const bAmount = ten.mul(ten).mul(ether)
+    await erc20.mint(borrowerAccount.address, bAmount)
+    await erc20.connect(borrowerAccount).approve(shelf.address, bAmount)
+    // add one day
+    // await timeFly(1)
+    // repay all the debt
+    let debt = await pile.connect(borrowerAccount).debt(loan)
+    while (debt.gt(BigNumber.from('0'))) {
+      console.log(`Pay the debt ${debt.toString()}`)
+      await shelf.connect(borrowerAccount).repay(loan, debt)
+      debt = await pile.connect(borrowerAccount).debt(loan)
+    }
+    // should call unlock if repay all the debt
+    await shelf.connect(borrowerAccount).unlock(loan)
+    await reserve.connect(borrowerAccount).balance()
+    // check
+    expect(await nft.connect(borrowerAccount).ownerOf(tokenID)).to.equal(borrowerAccount.address)
+    expect((await pile.connect(borrowerAccount).debt(loan)).toString()).to.equal('0')
+    expect((await erc20.connect(borrowerAccount).balanceOf(pile.address)).toString()).to.equal('0')
   }, 60000)
 })
