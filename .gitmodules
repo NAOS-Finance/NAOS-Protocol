@@ -4,6 +4,6 @@
 [submodule "contracts/Galaxy"]
 	path = contracts/Galaxy
 	url = https://github.com/NAOS-Finance/NAOS-Galaxy.git
-[submodule "contracts/NAOS-Committee"]
-	path = contracts/NAOS-Committee
+[submodule "contracts/Committee"]
+	path = contracts/Committee
 	url = https://github.com/NAOS-Finance/NAOS-Committee.git
