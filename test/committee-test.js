@@ -32,9 +32,9 @@ describe("Committee", function () {
   });
 
   it("Should deploy ERC721 contract", async function () {
-    const NAOSNFT = await ethers.getContractFactory("NAOSNFT");
+    const NAOSNFT = await ethers.getContractFactory("Nebula");
     ERC721 = await NAOSNFT.deploy();
-    expect(await ERC721.name()).to.equal("NAOSNFT");
+    expect(await ERC721.name()).to.equal("Nebula");
     expect(await ERC721.symbol()).to.equal("NAOS");
     expect(await ERC721.totalSupply()).to.equal(0);
   });

@@ -7,11 +7,11 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 
-contract NAOSNFT is ERC721, Ownable {
+contract Nebula is ERC721, Ownable {
     using Counters for Counters.Counter;
     Counters.Counter private _tokenIds;
 
-    constructor() public ERC721("NAOSNFT", "NAOS") {
+    constructor() public ERC721("Nebula", "NAOS") {
     }
 
     function safeMint(address to, string memory tokenURI) public onlyOwner {

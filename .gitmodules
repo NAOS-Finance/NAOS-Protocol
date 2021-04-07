@@ -1,9 +1,9 @@
-[submodule "contracts/Committee"]
-	path = contracts/committee
+[submodule "contracts/Formation"]
+	path = contracts/Formation
+	url = https://github.com/NAOS-Finance/NAOS-Formation.git
+[submodule "contracts/Galaxy"]
+	path = contracts/Galaxy
+	url = https://github.com/NAOS-Finance/NAOS-Galaxy.git
+[submodule "contracts/NAOS-Committee"]
+	path = contracts/NAOS-Committee
 	url = https://github.com/NAOS-Finance/NAOS-Committee.git
-[submodule "contracts/LoanPool"]
-	path = contracts/LoanPool
-	url = https://github.com/NAOS-Finance/NAOS-LoanPool.git
-[submodule "contracts/Funds"]
-	path = contracts/Funds
-	url = https://github.com/NAOS-Finance/smart-contracts.git

@@ -28,7 +28,7 @@ describe("ERC721 Borrow", function () {
     expect(await erc20.name()).to.equal(tokenName)
     expect(await erc20.symbol()).to.equal(tokenSymbol)
     const signer = await ethers.getSigner()
-    const Root = await ethers.getContractFactory("TinlakeRoot")
+    const Root = await ethers.getContractFactory("GalaxyRoot")
     const root = await Root.deploy(signer.address)
 
     // setup borrower
