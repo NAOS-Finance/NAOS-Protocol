@@ -7,7 +7,8 @@
   "license": "GPL-3.0",
   "scripts": {
     "compile": "npx hardhat compile",
-    "test": "npx hardhat --network ganache test"
+    "test": "npx hardhat --network ganache test",
+    "test_local": "npx hardhat --network localhost test"
   },
   "devDependencies": {
     "@gnosis.pm/mock-contract": "github:gnosis/mock-contract#sol_0_5_0",
