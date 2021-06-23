@@ -100,11 +100,11 @@ describe("ERC721 Borrow", function () {
     const LenderDeployer = await ethers.getContractFactory("LenderDeployer")
     const lenderDeployer = await LenderDeployer.deploy(root.address, erc20.address, trancheFab.address, memberlistFab.address, restrictedTokenFab.address, reserveFab.address, assessorFab.address, coordinatorFab.address, operatorFab.address)
     const tenp25 = BigNumber.from(10).pow(25)
-    const minSeniorRate = BigNumber.from(0).mul(tenp25)
-    const maxSeniorRate = BigNumber.from(100).mul(tenp25)
-    const maxReserve = BigNumber.from('5000000000000000001')
+    const minSeniorRate = BigNumber.from(0).mul(tenp25) // 0%
+    const maxSeniorRate = BigNumber.from(100).mul(tenp25) // 100%
+    const maxReserve = BigNumber.from('10000000000000000001')
     const maxSeniorInterestRate = BigNumber.from('1000000229200000000000000000')
-    await lenderDeployer.init(minSeniorRate, maxSeniorRate, maxReserve, 60*60, maxSeniorInterestRate, "Alpha Token", "Alpha", "Beta Token", "Beta")
+    await lenderDeployer.init(minSeniorRate, maxSeniorRate, maxReserve, 60 * 60, maxSeniorInterestRate, "Alpha Token", "Alpha", "Beta Token", "Beta")
     await lenderDeployer.deployJunior()
     await lenderDeployer.deploySenior()
     await lenderDeployer.deployReserve()
@@ -146,6 +146,8 @@ describe("ERC721 Borrow", function () {
     await root.relyContract(title.address, signer.address)
     await root.relyContract(collector.address, signer.address)
     await root.relyContract(nftFeed.address, signer.address)    
+    // to payout left money, assign signer to reserve
+    await root.relyContract(reserve.address, signer.address)
 
     // authorize first user to update investors
     await root.relyContract(juniorMemberlist.address, signer.address)
@@ -207,6 +209,13 @@ describe("ERC721 Borrow", function () {
     expect(root.address.length).to.equal(42)
     expect(borrowerDeployer.address.length).to.equal(42)
     expect(lenderDeployer.address.length).to.equal(42)
+    const navs = async () => {
+      return {
+        nav: (await assessor.callStatic['calcUpdateNAV()']()),
+        seniorTokenPrice: (await assessor.callStatic['calcSeniorTokenPrice()']()),
+        juniorTokenPrice: (await assessor.callStatic['calcJuniorTokenPrice()']())
+      }
+    }
     const nft = await setupNFT()
     const ten = BigNumber.from('10')
     const ether = ten.pow(18)
@@ -252,14 +261,14 @@ describe("ERC721 Borrow", function () {
     const jAmount = ceiling.mul(ten.pow(25)).mul(0).div(ONE) // 0%
     const sAmount = ceiling.mul(ten.pow(25)).mul(100).div(ONE) // 100%
 
-    console.log('Supply junior order')
+    console.log(`Supply junior order ${jAmount.toString()}`)
     await erc20.mint(juniorInvestor.address, jAmount)
     expect((await erc20.balanceOf(juniorInvestor.address)).toString()).to.equal(jAmount.toString())
     await erc20.connect(juniorInvestor).approve(juniorTranche.address, jAmount)
     expect((await erc20.allowance(juniorInvestor.address, juniorTranche.address)).toString()).to.equal(jAmount.toString())
     await juniorOperator.connect(juniorInvestor).supplyOrder(jAmount)
 
-    console.log('Supply senior order')
+    console.log(`Supply senior order ${sAmount.toString()}`)
     await erc20.mint(seniorInvestor.address, sAmount)
     expect((await erc20.balanceOf(seniorInvestor.address)).toString()).to.equal(sAmount.toString())
     await erc20.connect(seniorInvestor).approve(seniorTranche.address, sAmount)
@@ -268,15 +277,27 @@ describe("ERC721 Borrow", function () {
 
     // add one day (minimum times)
     await timeFly(1)
+    // expect((await coordinator.validate(0, 0 , sAmount, jAmount)).toNumber()).to.equal(0)
     // should care about these variables when init: minSeniorRatio_, maxSeniorRatio_, maxReserve_
     await coordinator.closeEpoch()
     // should not start the challenge period
     if (await coordinator.submissionPeriod() == true) {
-      expect((await coordinator.validate(0, 0 , sAmount, jAmount)).toNumber()).to.equal(0)
+      expect((await coordinator.submissionResult()).toNumber()).to.equal(0)
     }
+
+    // disburse tokens
+    console.log('Disburse junior investor')
+    await juniorOperator.connect(juniorInvestor)['disburse()']()
+    console.log('Disburse senior investor')
+    await seniorOperator.connect(seniorInvestor)['disburse()']()
+
+    let jrAmount = await juniorToken.balanceOf(juniorInvestor.address)
+    let srAmount = await seniorToken.balanceOf(seniorInvestor.address)
+    console.log(`Junior token amount: ${jrAmount.toString()}, Senior token amount: ${srAmount.toString()}`)
 
     // make sure there are investment
     // withdraw loan
+    console.log('Borrow and withdraw loan')
     await shelf.connect(borrowerAccount).lock(loan)
     await shelf.connect(borrowerAccount).borrow(loan, ceiling)
     await shelf.connect(borrowerAccount).withdraw(loan, ceiling, borrowerAccount.address)
@@ -285,15 +306,19 @@ describe("ERC721 Borrow", function () {
     expect(await nft.ownerOf(tokenID)).to.equal(shelf.address)
     expect((await erc20.balanceOf(borrowerAccount.address)).toString()).to.equal(ceiling.toString())
 
-    console.log(`NAV: ${(await coordinator.epochNAV()).toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${(await coordinator.epochSeniorTokenPrice()).toString()}, Junior token price: ${(await coordinator.epochJuniorTokenPrice()).toString()}`)
+    let ns = await navs()
+    console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
 
     // repay
-    // mint money to borrower
+    // mint more money to borrower
     const bAmount = ten.mul(ten).mul(ether)
     await erc20.mint(borrowerAccount.address, bAmount)
     await erc20.connect(borrowerAccount).approve(shelf.address, bAmount)
-    // add one day
-    // await timeFly(1)
+    // add two days
+    console.log("Add two days")
+    await timeFly(2)
+    ns = await navs()
+    console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
     // repay all the debt
     let debt = await pile.connect(borrowerAccount).debt(loan)
     while (debt.gt(BigNumber.from('0'))) {
@@ -308,5 +333,45 @@ describe("ERC721 Borrow", function () {
     expect(await nft.connect(borrowerAccount).ownerOf(tokenID)).to.equal(borrowerAccount.address)
     expect((await pile.connect(borrowerAccount).debt(loan)).toString()).to.equal('0')
     expect((await erc20.connect(borrowerAccount).balanceOf(pile.address)).toString()).to.equal('0')
+
+    // await coordinator.closeEpoch()
+    // // should not start the challenge period
+    // if (await coordinator.submissionPeriod() == true) {
+    //   expect((await coordinator.submissionResult()).toNumber()).to.equal(0)
+    // }
+
+    // redeem
+    console.log('Approve and redeem senior order')
+    await seniorToken.connect(seniorInvestor).approve(seniorTranche.address, srAmount)
+    await seniorOperator.connect(seniorInvestor).redeemOrder(srAmount)
+    // console.log('Approve and redeem junior order')
+    // await juniorToken.connect(juniorInvestor).approve(juniorTranche.address, jrAmount)
+    // await juniorOperator.connect(juniorInvestor).redeemOrder(jrAmount)
+
+    jrAmount = await juniorToken.balanceOf(juniorInvestor.address)
+    srAmount = await seniorToken.balanceOf(seniorInvestor.address)
+    console.log(`Junior token amount: ${jrAmount.toString()}, Senior token amount: ${srAmount.toString()}`)
+
+    await coordinator.closeEpoch()
+    // should not start the challenge period
+    if (await coordinator.submissionPeriod() == true) {
+      expect((await coordinator.submissionResult()).toNumber()).to.equal(0)
+    }
+
+    console.log(`Reserve balance: ${(await erc20.balanceOf(reserve.address)).toString()}, Senior tranche balance: ${(await erc20.balanceOf(seniorTranche.address)).toString()}`)
+
+    console.log('Payout currency to admin')
+    await reserve.payout(await erc20.balanceOf(reserve.address))
+    console.log(`Reserve balance: ${(await erc20.balanceOf(reserve.address)).toString()}, Admin balance: ${(await erc20.balanceOf(signers[0].address)).toString()}`)
+
+    // collect
+    // await timeFly(200)
+    // ns = await navs()
+    // console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
+    // console.log('Seize loan')
+    // await collector.seize(loan)
+    // await collector['collect(uint256)'](loan)
+    // ns = await navs()
+    // console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
   }, 60000)
 })
