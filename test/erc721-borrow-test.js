@@ -147,7 +147,7 @@ describe("ERC721 Borrow", function () {
     await root.relyContract(collector.address, signer.address)
     await root.relyContract(nftFeed.address, signer.address)    
     // to payout left money, assign signer to reserve
-    await root.relyContract(reserve.address, signer.address)
+    await root.relyContract(assessor.address, signer.address)
 
     // authorize first user to update investors
     await root.relyContract(juniorMemberlist.address, signer.address)
@@ -451,8 +451,15 @@ describe("ERC721 Borrow", function () {
 
     console.log(`Reserve balance: ${(await erc20.balanceOf(reserve.address)).toString()}, Senior tranche balance: ${(await erc20.balanceOf(seniorTranche.address)).toString()}`)
 
+    seniorValue = await seniorValues()
+    console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
     console.log('Payout currency to admin')
-    const payoutTx = await reserve.payout(await erc20.balanceOf(reserve.address))
+    try {
+      const failedPayoutTx = await reserve.payout(await erc20.balanceOf(reserve.address))
+    } catch (err) {
+      expect(err.message).eq('VM Exception while processing transaction: revert')
+    }
+    const payoutTx = await assessor.withdrawFee(await erc20.balanceOf(reserve.address))
     const payoutReceipt = await payoutTx.wait()
     checkoutReceipts.push({
       title: 'payout',
