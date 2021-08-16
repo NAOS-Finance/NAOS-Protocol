@@ -536,6 +536,10 @@ describe("ERC721 Borrow", function () {
 
     console.log(`Reserve balance: ${(await erc20.balanceOf(reserve.address)).toString()}, Senior tranche balance: ${(await erc20.balanceOf(seniorTranche.address)).toString()}`)
 
+    // withdraw investment
+    // await disburseToken(juniorOperator, juniorInvestors)
+    await disburseToken(seniorOperator, seniorInvestors)
+
     seniorValue = await seniorValues()
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
     console.log('Payout currency to admin')
@@ -803,28 +807,38 @@ describe("ERC721 Borrow", function () {
       expect((solution).toNumber()).to.equal(0)
       await coordinator.submitSolution(debt, 0, 0, 0)
       // should fly minChallengePeriodEnd
-      await timeFlySeconds((await coordinator.minChallengePeriodEnd()).mul(1000))
+      const timeDiff = (await coordinator.minChallengePeriodEnd()).sub(Math.floor((new Date()).getTime() / 1000))
+      console.log(timeDiff.toString())
+      await timeFlySeconds(timeDiff.toNumber())
       console.log('Execute submition solution')
       await coordinator.executeEpoch()
     }
 
     console.log(`Reserve balance: ${(await erc20.balanceOf(reserve.address)).toString()}, Senior tranche balance: ${(await erc20.balanceOf(seniorTranche.address)).toString()}`)
 
+    // withdraw investment
+    // await disburseToken(juniorOperator, juniorInvestors)
+    await disburseToken(seniorOperator, seniorInvestors)
+
     seniorValue = await seniorValues()
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
-    console.log('Payout currency to admin')
-    try {
-      const failedPayoutTx = await reserve.payout(await erc20.balanceOf(reserve.address))
-    } catch (err) {
-      expect(err.message).eq('VM Exception while processing transaction: revert')
-    }
-    const payoutTx = await assessor.withdrawFee(await erc20.balanceOf(reserve.address))
-    const payoutReceipt = await payoutTx.wait()
-    checkoutReceipts.push({
-      title: 'payout',
-      receipt: payoutReceipt
-    })
-    console.log(`Reserve balance: ${(await erc20.balanceOf(reserve.address)).toString()}, Admin balance: ${(await erc20.balanceOf(signers[0].address)).toString()}`)
+    srAmounts = await tokenAmount(seniorToken, seniorInvestors)
+    console.log(`Senior token amount: ${srAmounts.map(sr => sr.toString())}`)
+    const erc20SrAmounts = await tokenAmount(erc20, seniorInvestors)
+    console.log(`Senior erc20 amount: ${erc20SrAmounts.map(sr => sr.toString())}`)
+    // console.log('Payout currency to admin')
+    // try {
+    //   const failedPayoutTx = await reserve.payout(await erc20.balanceOf(reserve.address))
+    // } catch (err) {
+    //   expect(err.message).eq('VM Exception while processing transaction: revert')
+    // }
+    // const payoutTx = await assessor.withdrawFee(await erc20.balanceOf(reserve.address))
+    // const payoutReceipt = await payoutTx.wait()
+    // checkoutReceipts.push({
+    //   title: 'payout',
+    //   receipt: payoutReceipt
+    // })
+    // console.log(`Reserve balance: ${(await erc20.balanceOf(reserve.address)).toString()}, Admin balance: ${(await erc20.balanceOf(signers[0].address)).toString()}`)
 
     console.log('====== Gas Used')
     checkoutReceipts.forEach((cr) => {
