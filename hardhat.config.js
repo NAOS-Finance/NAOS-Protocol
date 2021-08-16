@@ -45,6 +45,7 @@ module.exports = {
       gasLimit: 10000000,
       defaultBalanceEther: 100,
       url: "http://localhost:8545",
+      hardfork: "istanbul"
     },
   }
 }
