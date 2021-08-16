@@ -46,10 +46,8 @@ module.exports = {
       gasLimit: 10000000,
       defaultBalanceEther: 100,
       url: "http://localhost:8545",
-    }
-  },
-  mocha: {
-    timeout: 0
+      hardfork: "istanbul"
+    },
   }
 }
 
