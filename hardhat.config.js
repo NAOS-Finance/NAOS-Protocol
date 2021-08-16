@@ -48,6 +48,9 @@ module.exports = {
       url: "http://localhost:8545",
       hardfork: "istanbul"
     },
+  },
+  mocha: {
+    timeout: 200000
   }
 }
 
