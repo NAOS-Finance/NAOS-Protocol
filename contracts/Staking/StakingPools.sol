@@ -125,7 +125,7 @@ contract StakingPools is ReentrancyGuard {
     /// This will update all of the pools.
     ///
     /// @param _rewardRate The number of tokens to distribute per block.
-    function setRewardRate(uint256 _rewardRate) external {
+    function setRewardRate(uint256 _rewardRate) external onlyGov {
         _updatePools();
         _ctx.rewardRate = _rewardRate;
 
