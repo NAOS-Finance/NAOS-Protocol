@@ -72,16 +72,22 @@ contract BoostPool is ReentrancyGuard {
     /// @dev The address of the account which currently has administrative capabilities over this contract.
     address public governance;
 
+    /// @dev The address which is the candidate of governance
     address public pendingGovernance;
 
+    /// @dev The token lock time
     uint256 public constant LOCK_TIME = 86400 * 90;
 
+    /// @dev The claim period after cooldown period is expired
     uint256 public constant CLAIM_PERIOD = 86400;
 
+    /// @dev The resolution of fixed point. The resolution allows for a granularity of 1% increments.
     uint256 public constant PERCENT_RESOLUTION = 100;
 
+    /// @dev The cooldown period
     uint256 public cooldownPeriod;
 
+    /// @dev The percent of reward will be distributed to the pool if user claims reward immediately.
     uint256 public penaltyPercent;
 
     /// @dev Tokens are mapped to their pool identifier plus one. Tokens that do not have an associated pool
