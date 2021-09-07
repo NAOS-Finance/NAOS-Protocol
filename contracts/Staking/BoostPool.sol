@@ -370,6 +370,21 @@ contract BoostPool is ReentrancyGuard {
         cooldown.claimEnd = block.timestamp + cooldownPeriod + CLAIM_PERIOD;
     }
 
+    /// @dev donate reward to the pool
+    ///
+    /// @param _poolId The pool id.
+    /// @param _donateAmount The donate amount
+    function donateReward(uint256 _poolId, uint256 _donateAmount)
+        external
+        nonReentrant
+    {
+        Pool.Data storage _pool = _pools.get(_poolId);
+        _pool.update(_ctx);
+
+        _pool.distribute(_donateAmount);
+        reward.safeTransferFrom(msg.sender, _donateAmount);
+    }
+
     /// @dev Gets the rate at which tokens are minted to stakers for all pools.
     ///
     /// @return the reward rate.
