@@ -388,7 +388,7 @@ contract BoostPool is ReentrancyGuard {
         _pool.update(_ctx);
 
         _pool.distribute(_donateAmount);
-        reward.safeTransferFrom(msg.sender, _donateAmount);
+        reward.safeTransferFrom(msg.sender, address(this), _donateAmount);
     }
 
     /// @dev Gets the rate at which tokens are minted to stakers for all pools.
