@@ -45,6 +45,14 @@ library Pool {
     _data.lastUpdatedBlock = block.number;
   }
 
+  /// @dev distribute rewards to other users.
+  ///
+  /// @param _distributeAmount the amount will be distributed.
+  function distribute(Data storage _data, uint256 _distributeAmount) internal {
+    FixedPointMath.uq192x64 memory distributeAmount = FixedPointMath.fromU256(_distributeAmount).div(_data.totalDeposited);
+    _data.accumulatedRewardWeight = _data.accumulatedRewardWeight.add(distributeAmount);
+  }
+
   /// @dev Gets the rate at which the pool will distribute rewards to stakers.
   ///
   /// @param _ctx the pool context.

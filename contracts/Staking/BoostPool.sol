@@ -78,7 +78,11 @@ contract BoostPool is ReentrancyGuard {
 
     uint256 public constant CLAIM_PERIOD = 86400;
 
+    uint256 public constant PERCENT_RESOLUTION = 100;
+
     uint256 public cooldownPeriod;
+
+    uint256 public penaltyPercent;
 
     /// @dev Tokens are mapped to their pool identifier plus one. Tokens that do not have an associated pool
     /// will return an identifier of zero.
@@ -116,6 +120,7 @@ contract BoostPool is ReentrancyGuard {
         reward = _reward;
         governance = _governance;
         cooldownPeriod = 86400 * 5;
+        penaltyPercent = 50;
     }
 
     /// @dev A modifier which reverts when the caller is not the governance.
@@ -240,8 +245,21 @@ contract BoostPool is ReentrancyGuard {
         _ctx.totalRewardWeight = _totalRewardWeight;
     }
 
+    /// @dev set cool down period
+    ///
+    /// @param _cooldownPeriod the cooldown period when user claims reward
     function setCooldown(uint256 _cooldownPeriod) external onlyGovernance {
         cooldownPeriod = _cooldownPeriod;
+    }
+
+    /// @dev set penalty percent
+    ///
+    /// @param _penaltyPercent the percent of reward will be distributed to other users
+    function setPenaltyPercent(uint256 _penaltyPercent)
+        external
+        onlyGovernance
+    {
+        penaltyPercent = _penaltyPercent;
     }
 
     /// @dev Stakes tokens into a pool.
@@ -310,6 +328,12 @@ contract BoostPool is ReentrancyGuard {
         Stake.Data storage _stake = _stakes[msg.sender][_poolId];
         _stake.update(_pool, _ctx);
 
+        uint256 penalty = _stake.totalUnclaimed.mul(penaltyPercent).div(
+            PERCENT_RESOLUTION
+        );
+        _pool.distribute(penalty);
+        _stake.totalUnclaimed = _stake.totalUnclaimed.sub(penalty);
+
         _claim(_poolId);
     }
 
@@ -344,20 +368,6 @@ contract BoostPool is ReentrancyGuard {
         );
         cooldown.claimStart = block.timestamp + cooldownPeriod;
         cooldown.claimEnd = block.timestamp + cooldownPeriod + CLAIM_PERIOD;
-    }
-
-    /// @dev Claims all rewards from a pool and then withdraws all staked tokens.
-    ///
-    /// @param _poolId the pool to exit from.
-    function exit(uint256 _poolId) external nonReentrant {
-        Pool.Data storage _pool = _pools.get(_poolId);
-        _pool.update(_ctx);
-
-        Stake.Data storage _stake = _stakes[msg.sender][_poolId];
-        _stake.update(_pool, _ctx);
-
-        _claim(_poolId);
-        _withdraw(_poolId, _stake.totalDeposited);
     }
 
     /// @dev Gets the rate at which tokens are minted to stakers for all pools.
