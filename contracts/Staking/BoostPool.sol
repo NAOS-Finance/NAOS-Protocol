@@ -41,11 +41,17 @@ contract BoostPool is ReentrancyGuard {
 
     event RewardRateUpdated(uint256 rewardRate);
 
+    event CooldownPeriodUpdated(uint256 period);
+
+    event PenaltyPercentUpdated(uint256 percent);
+
     event TokensDeposited(address indexed user, uint256 amount);
 
     event TokensWithdrawn(address indexed user, uint256 amount);
 
     event TokensClaimed(address indexed user, uint256 amount);
+
+    event CooldownStart(address indexed user, uint claimStart, uint claimEnd);
 
     /// @dev The token which will be minted as a reward for staking.
     IERC20 public reward;
@@ -168,6 +174,8 @@ contract BoostPool is ReentrancyGuard {
     /// @param _cooldownPeriod the cooldown period when user claims reward
     function setCooldown(uint256 _cooldownPeriod) external onlyGovernance {
         cooldownPeriod = _cooldownPeriod;
+
+        emit CooldownPeriodUpdated(_cooldownPeriod);
     }
 
     /// @dev set penalty percent
@@ -178,6 +186,8 @@ contract BoostPool is ReentrancyGuard {
         onlyGovernance
     {
         penaltyPercent = _penaltyPercent;
+
+        emit PenaltyPercentUpdated(_penaltyPercent);
     }
 
     /// @dev Stakes tokens into a pool.
@@ -273,6 +283,8 @@ contract BoostPool is ReentrancyGuard {
         );
         cooldown.claimStart = block.timestamp + cooldownPeriod;
         cooldown.claimEnd = block.timestamp + cooldownPeriod + CLAIM_PERIOD;
+
+        emit CooldownStart(msg.sender, cooldown.claimStart, cooldown.claimEnd);
     }
 
     /// @dev donate reward to the pool
