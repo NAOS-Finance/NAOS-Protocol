@@ -8,8 +8,8 @@ const timeFly = async (days) => {
 }
 
 describe("ERC721 Borrow", function () {
-  const tokenName = "NAOS Loan Token"
-  const tokenSymbol = "NAOS20"
+  const tokenName = "Mock DAI"
+  const tokenSymbol = "DAI"
 
   async function setupNFT() {
     const Title = await ethers.getContractFactory("Title")
@@ -17,8 +17,12 @@ describe("ERC721 Borrow", function () {
   }
 
   async function setupERC20() {
-    const NAOS = await ethers.getContractFactory("NAOS")
-    return await NAOS.deploy()
+    const ERC20MockFactory = await ethers.getContractFactory("ERC20Mock")
+    return await ERC20MockFactory.deploy(
+      "Mock DAI",
+      "DAI",
+      18
+    )
   }
 
   async function setupContracts() {
@@ -214,7 +218,6 @@ describe("ERC721 Borrow", function () {
     expect((await nftFeed.ceiling(loan)).toString()).to.equal('0')
     expect(await nft.ownerOf(tokenID)).to.equal(shelf.address)
     expect((await erc20.balanceOf(borrowerAccount.address)).toString()).to.equal(ceiling.toString())
-
     // repay
     // mint money to borrower
     const bAmount = ten.mul(ten).mul(ether)
