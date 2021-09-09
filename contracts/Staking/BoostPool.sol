@@ -12,8 +12,6 @@ import {Pool} from "./libraries/boostPools/Pool.sol";
 import {Stake} from "./libraries/boostPools/Stake.sol";
 import {StakingPools} from "./StakingPools.sol";
 
-import "hardhat/console.sol";
-
 /// @title StakingPools
 /// @dev A contract which allows users to stake to farm tokens.
 ///
@@ -22,7 +20,6 @@ import "hardhat/console.sol";
 contract BoostPool is ReentrancyGuard {
     using FixedPointMath for FixedPointMath.uq192x64;
     using Pool for Pool.Data;
-    using Pool for Pool.List;
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
     using Stake for Stake.Data;
@@ -44,27 +41,11 @@ contract BoostPool is ReentrancyGuard {
 
     event RewardRateUpdated(uint256 rewardRate);
 
-    event PoolRewardWeightUpdated(uint256 indexed poolId, uint256 rewardWeight);
+    event TokensDeposited(address indexed user, uint256 amount);
 
-    event PoolCreated(uint256 indexed poolId, IERC20 indexed token);
+    event TokensWithdrawn(address indexed user, uint256 amount);
 
-    event TokensDeposited(
-        address indexed user,
-        uint256 indexed poolId,
-        uint256 amount
-    );
-
-    event TokensWithdrawn(
-        address indexed user,
-        uint256 indexed poolId,
-        uint256 amount
-    );
-
-    event TokensClaimed(
-        address indexed user,
-        uint256 indexed poolId,
-        uint256 amount
-    );
+    event TokensClaimed(address indexed user, uint256 amount);
 
     /// @dev The token which will be minted as a reward for staking.
     IERC20 public reward;
@@ -90,10 +71,6 @@ contract BoostPool is ReentrancyGuard {
     /// @dev The percent of reward will be distributed to the pool if user claims reward immediately.
     uint256 public penaltyPercent;
 
-    /// @dev Tokens are mapped to their pool identifier plus one. Tokens that do not have an associated pool
-    /// will return an identifier of zero.
-    mapping(IERC20 => uint256) public tokenPoolIds;
-
     /// @dev The count of user's deposited orders.
     mapping(address => uint256) public userOrderCount;
 
@@ -101,27 +78,37 @@ contract BoostPool is ReentrancyGuard {
     mapping(address => mapping(uint256 => UserDepositedOrder))
         public userDepositedOrder;
 
-    /// @dev The cooldown period for each user of each pool.
-    mapping(address => mapping(uint256 => Cooldown)) public userCooldown;
+    /// @dev The cooldown period for each user.
+    mapping(address => Cooldown) public userCooldown;
 
     /// @dev The context shared between the pools.
     Pool.Context private _ctx;
 
-    /// @dev A list of all of the pools.
-    Pool.List private _pools;
+    /// @dev The pool information.
+    Pool.Data private pool;
 
-    /// @dev A mapping of all of the user stakes mapped first by pool and then by address.
-    mapping(address => mapping(uint256 => Stake.Data)) private _stakes;
+    /// @dev A mapping of all of the user stakes mapped by address.
+    mapping(address => Stake.Data) private _stakes;
 
-    constructor(IERC20 _reward, address _governance) public {
+    constructor(
+        IERC20 _token,
+        IERC20 _reward,
+        address _governance
+    ) public {
+        require(
+            address(_token) != address(0),
+            "BoostPool: token address cannot be 0x0"
+        );
         require(
             address(_reward) != address(0),
-            "StakingPools: reward address cannot be 0x0"
+            "BoostPool: reward address cannot be 0x0"
         );
         require(
             _governance != address(0),
-            "StakingPools: governance address cannot be 0x0"
+            "BoostPool: governance address cannot be 0x0"
         );
+
+        pool.set(_token);
 
         reward = _reward;
         governance = _governance;
@@ -166,89 +153,14 @@ contract BoostPool is ReentrancyGuard {
 
     /// @dev Sets the distribution reward rate.
     ///
-    /// This will update all of the pools.
-    ///
-    /// @param _rewardRate The number of tokens to distribute per second.
+    /// @param _rewardRate The number of tokens to distribute per block.
     function setRewardRate(uint256 _rewardRate) external onlyGovernance {
-        _updatePools();
+        Pool.Data storage _pool = pool.get();
+        _pool.update(_ctx);
 
         _ctx.rewardRate = _rewardRate;
 
         emit RewardRateUpdated(_rewardRate);
-    }
-
-    /// @dev Creates a new pool.
-    ///
-    /// The created pool will need to have its reward weight initialized before it begins generating rewards.
-    ///
-    /// @param _token The token the pool will accept for staking.
-    ///
-    /// @return the identifier for the newly created pool.
-    function createPool(IERC20 _token)
-        external
-        onlyGovernance
-        returns (uint256)
-    {
-        require(
-            address(_token) != address(0),
-            "StakingPools: token address cannot be 0x0"
-        );
-        require(
-            tokenPoolIds[_token] == 0,
-            "StakingPools: token already has a pool"
-        );
-
-        uint256 _poolId = _pools.length();
-
-        _pools.push(
-            Pool.Data({
-                token: _token,
-                totalDeposited: 0,
-                rewardWeight: 0,
-                accumulatedRewardWeight: FixedPointMath.uq192x64(0),
-                lastUpdatedBlock: block.number
-            })
-        );
-
-        tokenPoolIds[_token] = _poolId + 1;
-
-        emit PoolCreated(_poolId, _token);
-
-        return _poolId;
-    }
-
-    /// @dev Sets the reward weights of all of the pools.
-    ///
-    /// @param _rewardWeights The reward weights of all of the pools.
-    function setRewardWeights(uint256[] calldata _rewardWeights)
-        external
-        onlyGovernance
-    {
-        require(
-            _rewardWeights.length == _pools.length(),
-            "StakingPools: weights length mismatch"
-        );
-
-        _updatePools();
-
-        uint256 _totalRewardWeight = _ctx.totalRewardWeight;
-        for (uint256 _poolId = 0; _poolId < _pools.length(); _poolId++) {
-            Pool.Data storage _pool = _pools.get(_poolId);
-
-            uint256 _currentRewardWeight = _pool.rewardWeight;
-            if (_currentRewardWeight == _rewardWeights[_poolId]) {
-                continue;
-            }
-
-            _totalRewardWeight = _totalRewardWeight
-                .sub(_currentRewardWeight)
-                .add(_rewardWeights[_poolId]);
-            _pool.rewardWeight = _rewardWeights[_poolId];
-
-            emit PoolRewardWeightUpdated(_poolId, _rewardWeights[_poolId]);
-        }
-
-        _ctx.totalRewardWeight = _totalRewardWeight;
     }
 
     /// @dev set cool down period
@@ -270,33 +182,25 @@ contract BoostPool is ReentrancyGuard {
 
     /// @dev Stakes tokens into a pool.
     ///
-    /// @param _poolId        the pool to deposit tokens into.
     /// @param _depositAmount the amount of tokens to deposit.
-    function deposit(uint256 _poolId, uint256 _depositAmount)
-        external
-        nonReentrant
-    {
-        Pool.Data storage _pool = _pools.get(_poolId);
+    function deposit(uint256 _depositAmount) external nonReentrant {
+        Pool.Data storage _pool = pool.get();
         _pool.update(_ctx);
 
-        Stake.Data storage _stake = _stakes[msg.sender][_poolId];
+        Stake.Data storage _stake = _stakes[msg.sender];
         _stake.update(_pool, _ctx);
 
-        _deposit(_poolId, _depositAmount);
+        _deposit(_depositAmount);
     }
 
     /// @dev Withdraws staked tokens from a pool.
     ///
-    /// @param _poolId          The pool to withdraw staked tokens from.
     /// @param _index           The index of deposited order.
-    function withdraw(uint256 _poolId, uint256[] calldata _index)
-        external
-        nonReentrant
-    {
-        Pool.Data storage _pool = _pools.get(_poolId);
+    function withdraw(uint256[] calldata _index) external nonReentrant {
+        Pool.Data storage _pool = pool.get();
         _pool.update(_ctx);
 
-        Stake.Data storage _stake = _stakes[msg.sender][_poolId];
+        Stake.Data storage _stake = _stakes[msg.sender];
         _stake.update(_pool, _ctx);
 
         require(_index.length <= userOrderCount[msg.sender], "invalid index");
@@ -306,32 +210,31 @@ contract BoostPool is ReentrancyGuard {
             UserDepositedOrder storage depositedOrder = userDepositedOrder[
                 msg.sender
             ][_index[i]];
+            require(_index[i] < userOrderCount[msg.sender], "invalid index");
             require(!depositedOrder.isWithdraw, "The order has been withdrew");
             require(
-                depositedOrder.depositedTime.add(LOCK_TIME) > block.timestamp,
+                depositedOrder.depositedTime.add(LOCK_TIME) < block.timestamp,
                 "The lock time is not expired!"
             );
             depositedOrder.isWithdraw = true;
             withdrawAmount.add(depositedOrder.amount);
         }
 
-        _withdraw(_poolId, withdrawAmount);
+        _withdraw(withdrawAmount);
     }
 
     /// @dev Claims all rewarded tokens from a pool.
-    ///
-    /// @param _poolId The pool to claim rewards from.
-    function claimImmediately(uint256 _poolId) external nonReentrant {
-        Cooldown memory cooldown = userCooldown[msg.sender][_poolId];
+    function claimImmediately() external nonReentrant {
+        Cooldown memory cooldown = userCooldown[msg.sender];
         require(
             cooldown.claimEnd < block.timestamp,
             "wait for the last cooldown period expired"
         );
 
-        Pool.Data storage _pool = _pools.get(_poolId);
+        Pool.Data storage _pool = pool.get();
         _pool.update(_ctx);
 
-        Stake.Data storage _stake = _stakes[msg.sender][_poolId];
+        Stake.Data storage _stake = _stakes[msg.sender];
         _stake.update(_pool, _ctx);
 
         uint256 penalty = _stake.totalUnclaimed.mul(penaltyPercent).div(
@@ -340,34 +243,30 @@ contract BoostPool is ReentrancyGuard {
         _pool.distribute(penalty);
         _stake.totalUnclaimed = _stake.totalUnclaimed.sub(penalty);
 
-        _claim(_poolId);
+        _claim();
     }
 
     /// @dev Claims all rewarded tokens from a pool.
-    ///
-    /// @param _poolId The pool to claim rewards from.
-    function claim(uint256 _poolId) external nonReentrant {
-        Cooldown storage cooldown = userCooldown[msg.sender][_poolId];
+    function claim() external nonReentrant {
+        Cooldown storage cooldown = userCooldown[msg.sender];
         require(
             cooldown.claimStart <= block.timestamp &&
                 cooldown.claimEnd >= block.timestamp,
             "not in the claim period!"
         );
 
-        Pool.Data storage _pool = _pools.get(_poolId);
+        Pool.Data storage _pool = pool.get();
         _pool.update(_ctx);
 
-        Stake.Data storage _stake = _stakes[msg.sender][_poolId];
+        Stake.Data storage _stake = _stakes[msg.sender];
         _stake.update(_pool, _ctx);
 
-        _claim(_poolId);
+        _claim();
     }
 
     /// @dev lead user into cooldown period.
-    ///
-    /// @param _poolId The pool id.
-    function startCoolDown(uint256 _poolId) public {
-        Cooldown storage cooldown = userCooldown[msg.sender][_poolId];
+    function startCoolDown() public nonReentrant {
+        Cooldown storage cooldown = userCooldown[msg.sender];
         require(
             cooldown.claimEnd < block.timestamp,
             "wait for the last cooldown period expired"
@@ -378,13 +277,9 @@ contract BoostPool is ReentrancyGuard {
 
     /// @dev donate reward to the pool
     ///
-    /// @param _poolId The pool id.
     /// @param _donateAmount The donate amount
-    function donateReward(uint256 _poolId, uint256 _donateAmount)
-        external
-        nonReentrant
-    {
-        Pool.Data storage _pool = _pools.get(_poolId);
+    function donateReward(uint256 _donateAmount) external nonReentrant {
+        Pool.Data storage _pool = pool.get();
         _pool.update(_ctx);
 
         _pool.distribute(_donateAmount);
@@ -398,123 +293,58 @@ contract BoostPool is ReentrancyGuard {
         return _ctx.rewardRate;
     }
 
-    /// @dev Gets the total reward weight between all the pools.
-    ///
-    /// @return the total reward weight.
-    function totalRewardWeight() external view returns (uint256) {
-        return _ctx.totalRewardWeight;
-    }
-
-    /// @dev Gets the number of pools that exist.
-    ///
-    /// @return the pool count.
-    function poolCount() external view returns (uint256) {
-        return _pools.length();
-    }
-
     /// @dev Gets the token a pool accepts.
     ///
-    /// @param _poolId the identifier of the pool.
-    ///
     /// @return the token.
-    function getPoolToken(uint256 _poolId) external view returns (IERC20) {
-        Pool.Data storage _pool = _pools.get(_poolId);
+    function getPoolToken() external view returns (IERC20) {
+        Pool.Data storage _pool = pool.get();
         return _pool.token;
     }
 
     /// @dev Gets the total amount of funds staked in a pool.
     ///
-    /// @param _poolId the identifier of the pool.
-    ///
     /// @return the total amount of staked or deposited tokens.
-    function getPoolTotalDeposited(uint256 _poolId)
-        external
-        view
-        returns (uint256)
-    {
-        Pool.Data storage _pool = _pools.get(_poolId);
+    function getPoolTotalDeposited() external view returns (uint256) {
+        Pool.Data storage _pool = pool.get();
         return _pool.totalDeposited;
-    }
-
-    /// @dev Gets the reward weight of a pool which determines how much of the total rewards it receives per block.
-    ///
-    /// @param _poolId the identifier of the pool.
-    ///
-    /// @return the pool reward weight.
-    function getPoolRewardWeight(uint256 _poolId)
-        external
-        view
-        returns (uint256)
-    {
-        Pool.Data storage _pool = _pools.get(_poolId);
-        return _pool.rewardWeight;
-    }
-
-    /// @dev Gets the amount of tokens per block being distributed to stakers for a pool.
-    ///
-    /// @param _poolId the identifier of the pool.
-    ///
-    /// @return the pool reward rate.
-    function getPoolRewardRate(uint256 _poolId)
-        external
-        view
-        returns (uint256)
-    {
-        Pool.Data storage _pool = _pools.get(_poolId);
-        return _pool.getRewardRate(_ctx);
     }
 
     /// @dev Gets the number of tokens a user has staked into a pool.
     ///
     /// @param _account The account to query.
-    /// @param _poolId  the identifier of the pool.
     ///
     /// @return the amount of deposited tokens.
-    function getStakeTotalDeposited(address _account, uint256 _poolId)
+    function getStakeTotalDeposited(address _account)
         external
         view
         returns (uint256)
     {
-        Stake.Data storage _stake = _stakes[_account][_poolId];
+        Stake.Data storage _stake = _stakes[_account];
         return _stake.totalDeposited;
     }
 
     /// @dev Gets the number of unclaimed reward tokens a user can claim from a pool.
     ///
     /// @param _account The account to get the unclaimed balance of.
-    /// @param _poolId  The pool to check for unclaimed rewards.
     ///
     /// @return the amount of unclaimed reward tokens a user has in a pool.
-    function getStakeTotalUnclaimed(address _account, uint256 _poolId)
+    function getStakeTotalUnclaimed(address _account)
         external
         view
         returns (uint256)
     {
-        Stake.Data storage _stake = _stakes[_account][_poolId];
-        return _stake.getUpdatedTotalUnclaimed(_pools.get(_poolId), _ctx);
-    }
-
-    /// @dev Updates all of the pools.
-    ///
-    /// Warning:
-    /// Make the staking plan before add a new pool. If the amount of pool becomes too many would
-    /// result the transaction failed due to high gas usage in for-loop.
-    function _updatePools() internal {
-        for (uint256 _poolId = 0; _poolId < _pools.length(); _poolId++) {
-            Pool.Data storage _pool = _pools.get(_poolId);
-            _pool.update(_ctx);
-        }
+        Stake.Data storage _stake = _stakes[_account];
+        return _stake.getUpdatedTotalUnclaimed(pool.get(), _ctx);
     }
 
     /// @dev Stakes tokens into a pool.
     ///
     /// The pool and stake MUST be updated before calling this function.
     ///
-    /// @param _poolId        the pool to deposit tokens into.
     /// @param _depositAmount the amount of tokens to deposit.
-    function _deposit(uint256 _poolId, uint256 _depositAmount) internal {
-        Pool.Data storage _pool = _pools.get(_poolId);
-        Stake.Data storage _stake = _stakes[msg.sender][_poolId];
+    function _deposit(uint256 _depositAmount) internal {
+        Pool.Data storage _pool = pool.get();
+        Stake.Data storage _stake = _stakes[msg.sender];
 
         _pool.totalDeposited = _pool.totalDeposited.add(_depositAmount);
         _stake.totalDeposited = _stake.totalDeposited.add(_depositAmount);
@@ -530,42 +360,39 @@ contract BoostPool is ReentrancyGuard {
 
         _pool.token.safeTransferFrom(msg.sender, address(this), _depositAmount);
 
-        emit TokensDeposited(msg.sender, _poolId, _depositAmount);
+        emit TokensDeposited(msg.sender, _depositAmount);
     }
 
     /// @dev Withdraws staked tokens from a pool.
     ///
     /// The pool and stake MUST be updated before calling this function.
     ///
-    /// @param _poolId          The pool to withdraw staked tokens from.
     /// @param _withdrawAmount  The number of tokens to withdraw.
-    function _withdraw(uint256 _poolId, uint256 _withdrawAmount) internal {
-        Pool.Data storage _pool = _pools.get(_poolId);
-        Stake.Data storage _stake = _stakes[msg.sender][_poolId];
+    function _withdraw(uint256 _withdrawAmount) internal {
+        Pool.Data storage _pool = pool.get();
+        Stake.Data storage _stake = _stakes[msg.sender];
 
         _pool.totalDeposited = _pool.totalDeposited.sub(_withdrawAmount);
         _stake.totalDeposited = _stake.totalDeposited.sub(_withdrawAmount);
 
         _pool.token.safeTransfer(msg.sender, _withdrawAmount);
 
-        emit TokensWithdrawn(msg.sender, _poolId, _withdrawAmount);
+        emit TokensWithdrawn(msg.sender, _withdrawAmount);
     }
 
     /// @dev Claims all rewarded tokens from a pool.
     ///
     /// The pool and stake MUST be updated before calling this function.
     ///
-    /// @param _poolId The pool to claim rewards from.
-    ///
     /// @notice use this function to claim the tokens from a corresponding pool by ID.
-    function _claim(uint256 _poolId) internal {
-        Stake.Data storage _stake = _stakes[msg.sender][_poolId];
+    function _claim() internal {
+        Stake.Data storage _stake = _stakes[msg.sender];
 
         uint256 _claimAmount = _stake.totalUnclaimed;
         _stake.totalUnclaimed = 0;
 
         reward.safeTransfer(msg.sender, _claimAmount);
 
-        emit TokensClaimed(msg.sender, _poolId, _claimAmount);
+        emit TokensClaimed(msg.sender, _claimAmount);
     }
 }
