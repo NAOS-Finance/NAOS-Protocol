@@ -7,7 +7,6 @@ import {SafeMath} from "@openzeppelin/contracts/math/SafeMath.sol";
 
 import {FixedPointMath} from "../FixedPointMath.sol";
 import {Pool} from "./Pool.sol";
-import {IOrderBook} from "../../Interfaces/IOrderBook.sol";
 
 /// @title Stake
 ///
@@ -19,23 +18,13 @@ library Stake {
   using Stake for Stake.Data;
 
   struct Data {
-    uint256 totalSupply;
     uint256 totalDeposited;
+    uint256 totalDepositedWeight;
     uint256 totalUnclaimed;
-    uint256 lastDepositedTimestamp;
-    uint256 lastDepositedEpoch;
     FixedPointMath.uq192x64 lastAccumulatedWeight;
   }
 
-  function update(Data storage _self, Pool.Data storage _pool, Pool.Context storage _ctx, IOrderBook orderBook) internal {
-    uint256 currentEpoch = orderBook.getCurrentEpoch();
-    if (_self.lastDepositedEpoch < currentEpoch) {
-      uint256 tokenPrice = orderBook.getEpochTokenPrice(_self.lastDepositedEpoch);
-      // TODO: check decimal
-      _self.totalDeposited = _self.totalDeposited.add(_self.totalSupply.div(tokenPrice));
-      _self.totalSupply = 0;
-      _self.lastDepositedEpoch = currentEpoch;
-    }
+  function update(Data storage _self, Pool.Data storage _pool, Pool.Context storage _ctx) internal {
     _self.totalUnclaimed = _self.getUpdatedTotalUnclaimed(_pool, _ctx);
     _self.lastAccumulatedWeight = _pool.getUpdatedAccumulatedRewardWeight(_ctx);
   }
@@ -53,7 +42,7 @@ library Stake {
 
     uint256 _distributedAmount = _currentAccumulatedWeight
       .sub(_lastAccumulatedWeight)
-      .mul(_self.totalDeposited)
+      .mul(_self.totalDepositedWeight)
       .decode();
 
     return _self.totalUnclaimed.add(_distributedAmount);
