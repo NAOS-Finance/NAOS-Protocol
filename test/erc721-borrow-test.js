@@ -314,6 +314,59 @@ describe("ERC721 Borrow", function () {
     return count
   }
 
+  const navs = async (assessor) => {
+    return {
+      nav: (await assessor.callStatic['calcUpdateNAV()']()),
+      seniorTokenPrice: (await assessor.callStatic['calcSeniorTokenPrice()']()),
+      juniorTokenPrice: (await assessor.callStatic['calcJuniorTokenPrice()']())
+    }
+  }
+
+  const seniorValues = async (assessor) => {
+    return {
+      debt: (await assessor.callStatic['seniorDebt()']()),
+      balance: (await assessor.callStatic['seniorBalance()']())
+    }
+  }
+
+  const setupLoan = async (borrowerAccount, shelf, nftFeed) => {
+    const nft = await setupNFT()
+    // 10 ether
+    const nftPrice = ten.mul(ether)
+    const riskGroup = 2
+    // const abiCoder = new ethers.utils.AbiCoder()
+    // issue loan
+    await nft.issue(borrowerAccount.address)
+    const tokenID = (await nft.count()).sub(1)
+    console.log('NFT ID:', tokenID.toString())
+    // 30 days
+    const maturityDate = 1700000000
+    // it's different with keccak256(abi.encodePacked(nft.address, tokenID))
+    // const tokenKey = ethers.utils.keccak256(abiCoder.encode([{ type: 'address' }, { type: 'uint256' }], [nft.address, tokenID]))
+    const tokenKey = await nftFeed.callStatic['nftID(address,uint256)'](nft.address, tokenID)
+    // set nft price and risk
+    console.log(`Borrow NFT identifier ${tokenKey}`)
+    await nftFeed['update(bytes32,uint256,uint256)'](tokenKey, nftPrice, riskGroup)
+    await nftFeed['file(bytes32,bytes32,uint256)']('0x' + Buffer.from("maturityDate").toString('hex').padEnd(64, '0'), tokenKey, maturityDate)
+    console.log('Issue nft')
+    // issue nft
+    const loan = await shelf.connect(borrowerAccount).callStatic.issue(nft.address, tokenID)
+    await shelf.connect(borrowerAccount).issue(nft.address, tokenID)
+    const ceiling = await nftFeed.ceiling(loan)
+    expect(ceiling.toString()).equal(nftPrice.div(2).toString())
+    await nft.connect(borrowerAccount).setApprovalForAll(shelf.address, true)
+    const threshold = await nftFeed.threshold(loan)
+    return {
+      nft,
+      tokenID,
+      maturityDate,
+      tokenKey,
+      loan,
+      ceiling,
+      threshold
+    }
+  }
+
   it("should setup loan / borrow and repay all debt", async function () {
     const {
       erc20,
@@ -345,60 +398,9 @@ describe("ERC721 Borrow", function () {
     expect(root.address.length).to.equal(42)
     expect(borrowerDeployer.address.length).to.equal(42)
     expect(lenderDeployer.address.length).to.equal(42)
-    const navs = async () => {
-      return {
-        nav: (await assessor.callStatic['calcUpdateNAV()']()),
-        seniorTokenPrice: (await assessor.callStatic['calcSeniorTokenPrice()']()),
-        juniorTokenPrice: (await assessor.callStatic['calcJuniorTokenPrice()']())
-      }
-    }
-    const seniorValues = async () => {
-      return {
-        debt: (await assessor.callStatic['seniorDebt()']()),
-        balance: (await assessor.callStatic['seniorBalance()']())
-      }
-    }
     const borrowerAccount = signers[1]
     const seniorInvestors = [signers[3], signers[4]]
     const validUntil = (new Date).getTime() + 30 * 86400 * 1000
-    
-    const setupLoan = async () => {
-      const nft = await setupNFT()
-      // 10 ether
-      const nftPrice = ten.mul(ether)
-      const riskGroup = 2
-      // const abiCoder = new ethers.utils.AbiCoder()
-      // issue loan
-      await nft.issue(borrowerAccount.address)
-      const tokenID = (await nft.count()).sub(1)
-      console.log('NFT ID:', tokenID.toString())
-      // 30 days
-      const maturityDate = 1700000000
-      // it's different with keccak256(abi.encodePacked(nft.address, tokenID))
-      // const tokenKey = ethers.utils.keccak256(abiCoder.encode([{ type: 'address' }, { type: 'uint256' }], [nft.address, tokenID]))
-      const tokenKey = await nftFeed.callStatic['nftID(address,uint256)'](nft.address, tokenID)
-      // set nft price and risk
-      console.log(`Borrow NFT identifier ${tokenKey}`)
-      await nftFeed['update(bytes32,uint256,uint256)'](tokenKey, nftPrice, riskGroup)
-      await nftFeed['file(bytes32,bytes32,uint256)']('0x' + Buffer.from("maturityDate").toString('hex').padEnd(64, '0'), tokenKey, maturityDate)
-      console.log('Issue nft')
-      // issue nft
-      const loan = await shelf.connect(borrowerAccount).callStatic.issue(nft.address, tokenID)
-      // await shelf.connect(borrowerAccount).issue(nft.address, tokenID)
-      await shelf.connect(borrowerAccount).issue(nft.address, tokenID)
-      const ceiling = await nftFeed.ceiling(loan)
-      expect(ceiling.toString()).equal(nftPrice.div(2).toString())
-      await nft.connect(borrowerAccount).setApprovalForAll(shelf.address, true)
-      console.log('NFT ID:', (await nft.count()).sub(1).toString())
-      return {
-        nft,
-        tokenID,
-        maturityDate,
-        tokenKey,
-        loan,
-        ceiling
-      }
-    }
     const {
       nft,
       tokenID,
@@ -406,7 +408,7 @@ describe("ERC721 Borrow", function () {
       // tokenKey,
       loan,
       ceiling
-    } = await setupLoan()
+    } = await setupLoan(borrowerAccount, shelf, nftFeed)
     
     console.log('Invest the debt')
 
@@ -434,7 +436,7 @@ describe("ERC721 Borrow", function () {
       receipt: closeReceipt
     })
 
-    let seniorValue = await seniorValues()
+    let seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
     // should not start the challenge period
     if (await coordinator.submissionPeriod() == true) {
@@ -491,9 +493,9 @@ describe("ERC721 Borrow", function () {
     expect(await nft.ownerOf(tokenID)).to.equal(shelf.address)
     expect((await erc20.balanceOf(borrowerAccount.address)).toString()).to.equal(ceiling.toString())
 
-    let ns = await navs()
+    let ns = await navs(assessor)
     console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
-    seniorValue = await seniorValues()
+    seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
 
     // repay
@@ -504,9 +506,9 @@ describe("ERC721 Borrow", function () {
     // add two days
     console.log("Add two days")
     await timeFly(2)
-    ns = await navs()
+    ns = await navs(assessor)
     console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
-    seniorValue = await seniorValues()
+    seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
     // repay all the debt
     let debt = await pile.connect(borrowerAccount).debt(loan)
@@ -515,7 +517,7 @@ describe("ERC721 Borrow", function () {
       await shelf.connect(borrowerAccount).repay(loan, debt)
       debt = await pile.connect(borrowerAccount).debt(loan)
     }
-    seniorValue = await seniorValues()
+    seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
     // should call unlock if repay all the debt
     await shelf.connect(borrowerAccount).unlock(loan)
@@ -525,9 +527,9 @@ describe("ERC721 Borrow", function () {
     expect((await pile.connect(borrowerAccount).debt(loan)).toString()).to.equal('0')
     expect((await erc20.connect(borrowerAccount).balanceOf(pile.address)).toString()).to.equal('0')
 
-    ns = await navs()
+    ns = await navs(assessor)
     console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
-    seniorValue = await seniorValues()
+    seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
 
     // await coordinator.closeEpoch()
@@ -562,7 +564,7 @@ describe("ERC721 Borrow", function () {
     // await disburseToken(juniorOperator, juniorInvestors)
     await disburseToken(seniorOperator, seniorInvestors)
 
-    seniorValue = await seniorValues()
+    seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
     console.log('Payout currency to admin')
     try {
@@ -586,12 +588,12 @@ describe("ERC721 Borrow", function () {
 
     // collect
     // await timeFly(200)
-    // ns = await navs()
+    // ns = await navs(assessor)
     // console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
     // console.log('Seize loan')
     // await collector.seize(loan)
     // await collector['collect(uint256)'](loan)
-    // ns = await navs()
+    // ns = await navs(assessor)
     // console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
   }, 100000)
 
@@ -626,57 +628,9 @@ describe("ERC721 Borrow", function () {
     expect(root.address.length).to.equal(42)
     expect(borrowerDeployer.address.length).to.equal(42)
     expect(lenderDeployer.address.length).to.equal(42)
-    const navs = async () => {
-      return {
-        nav: (await assessor.callStatic['calcUpdateNAV()']()),
-        seniorTokenPrice: (await assessor.callStatic['calcSeniorTokenPrice()']()),
-        juniorTokenPrice: (await assessor.callStatic['calcJuniorTokenPrice()']())
-      }
-    }
-    const seniorValues = async () => {
-      return {
-        debt: (await assessor.callStatic['seniorDebt()']()),
-        balance: (await assessor.callStatic['seniorBalance()']())
-      }
-    }
     const borrowerAccount = signers[1]
     const seniorInvestors = [signers[2], signers[3], signers[4], signers[5]]
     const validUntil = (new Date).getTime() + 30 * 86400 * 1000
-    
-    const setupLoan = async () => {
-      const nft = await setupNFT()
-      // 10 ether
-      const nftPrice = ten.mul(ether)
-      const riskGroup = 2
-      // const abiCoder = new ethers.utils.AbiCoder()
-      // issue loan
-      await nft.issue(borrowerAccount.address)
-      const tokenID = (await nft.count()).sub(1)
-      // 30 days
-      const maturityDate = 1700000000
-      // it's different with keccak256(abi.encodePacked(nft.address, tokenID))
-      // const tokenKey = ethers.utils.keccak256(abiCoder.encode([{ type: 'address' }, { type: 'uint256' }], [nft.address, tokenID]))
-      const tokenKey = await nftFeed.callStatic['nftID(address,uint256)'](nft.address, tokenID)
-      // set nft price and risk
-      console.log(`Borrow NFT identifier ${tokenKey}`)
-      await nftFeed['update(bytes32,uint256,uint256)'](tokenKey, nftPrice, riskGroup)
-      await nftFeed['file(bytes32,bytes32,uint256)']('0x' + Buffer.from("maturityDate").toString('hex').padEnd(64, '0'), tokenKey, maturityDate)
-      console.log('Issue nft')
-      // issue nft
-      const loan = await shelf.connect(borrowerAccount).callStatic.issue(nft.address, tokenID)
-      await shelf.connect(borrowerAccount).issue(nft.address, tokenID)
-      const ceiling = await nftFeed.ceiling(loan)
-      expect(ceiling.toString()).equal(nftPrice.div(2).toString())
-      await nft.connect(borrowerAccount).setApprovalForAll(shelf.address, true)
-      return {
-        nft,
-        tokenID,
-        maturityDate,
-        tokenKey,
-        loan,
-        ceiling
-      }
-    }
     const {
       nft,
       tokenID,
@@ -684,7 +638,7 @@ describe("ERC721 Borrow", function () {
       // tokenKey,
       loan,
       ceiling
-    } = await setupLoan()
+    } = await setupLoan(borrowerAccount, shelf, nftFeed)
     
     console.log('Invest the debt')
 
@@ -712,7 +666,7 @@ describe("ERC721 Borrow", function () {
       receipt: closeReceipt
     })
 
-    let seniorValue = await seniorValues()
+    let seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
     // should not start the challenge period
     if (await coordinator.submissionPeriod() == true) {
@@ -769,9 +723,9 @@ describe("ERC721 Borrow", function () {
     expect(await nft.ownerOf(tokenID)).to.equal(shelf.address)
     expect((await erc20.balanceOf(borrowerAccount.address)).toString()).to.equal(ceiling.toString())
 
-    let ns = await navs()
+    let ns = await navs(assessor)
     console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
-    seniorValue = await seniorValues()
+    seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
 
     // repay
@@ -782,9 +736,9 @@ describe("ERC721 Borrow", function () {
     // add two days
     console.log("Add two days")
     await timeFly(2)
-    ns = await navs()
+    ns = await navs(assessor)
     console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
-    seniorValue = await seniorValues()
+    seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
 
     // repay partial the debt
@@ -793,12 +747,12 @@ describe("ERC721 Borrow", function () {
     console.log(`Pay the debt ${debt.toString()}`)
     await shelf.connect(borrowerAccount).repay(loan, debt)
     debt = await pile.connect(borrowerAccount).debt(loan)
-    seniorValue = await seniorValues()
+    seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
 
-    ns = await navs()
+    ns = await navs(assessor)
     console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
-    seniorValue = await seniorValues()
+    seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
 
     // await coordinator.closeEpoch()
@@ -842,7 +796,7 @@ describe("ERC721 Borrow", function () {
     // await disburseToken(juniorOperator, juniorInvestors)
     await disburseToken(seniorOperator, seniorInvestors)
 
-    seniorValue = await seniorValues()
+    seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
     srAmounts = await tokenAmount(seniorToken, seniorInvestors)
     console.log(`Senior token amount: ${srAmounts.map(sr => sr.toString())}`)
@@ -870,12 +824,12 @@ describe("ERC721 Borrow", function () {
 
     // collect
     // await timeFly(200)
-    // ns = await navs()
+    // ns = await navs(assessor)
     // console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
     // console.log('Seize loan')
     // await collector.seize(loan)
     // await collector['collect(uint256)'](loan)
-    // ns = await navs()
+    // ns = await navs(assessor)
     // console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
   }, 100000)
 
@@ -910,59 +864,10 @@ describe("ERC721 Borrow", function () {
     expect(root.address.length).to.equal(42)
     expect(borrowerDeployer.address.length).to.equal(42)
     expect(lenderDeployer.address.length).to.equal(42)
-    const navs = async () => {
-      return {
-        nav: (await assessor.callStatic['calcUpdateNAV()']()),
-        seniorTokenPrice: (await assessor.callStatic['calcSeniorTokenPrice()']()),
-        juniorTokenPrice: (await assessor.callStatic['calcJuniorTokenPrice()']())
-      }
-    }
-    const seniorValues = async () => {
-      return {
-        debt: (await assessor.callStatic['seniorDebt()']()),
-        balance: (await assessor.callStatic['seniorBalance()']())
-      }
-    }
+
     const borrowerAccount = signers[1]
     const seniorInvestors = [signers[2], signers[3], signers[4], signers[5]]
     const validUntil = (new Date).getTime() + 30 * 86400 * 1000
-    
-    const setupLoan = async () => {
-      const nft = await setupNFT()
-      // 10 ether
-      const nftPrice = ten.mul(ether)
-      const riskGroup = 2
-      // const abiCoder = new ethers.utils.AbiCoder()
-      // issue loan
-      await nft.issue(borrowerAccount.address)
-      const tokenID = (await nft.count()).sub(1)
-      // 30 days
-      const maturityDate = 1700000000
-      // it's different with keccak256(abi.encodePacked(nft.address, tokenID))
-      // const tokenKey = ethers.utils.keccak256(abiCoder.encode([{ type: 'address' }, { type: 'uint256' }], [nft.address, tokenID]))
-      const tokenKey = await nftFeed.callStatic['nftID(address,uint256)'](nft.address, tokenID)
-      // set nft price and risk
-      console.log(`Borrow NFT identifier ${tokenKey}`)
-      await nftFeed['update(bytes32,uint256,uint256)'](tokenKey, nftPrice, riskGroup)
-      await nftFeed['file(bytes32,bytes32,uint256)']('0x' + Buffer.from("maturityDate").toString('hex').padEnd(64, '0'), tokenKey, maturityDate)
-      console.log('Issue nft')
-      // issue nft
-      const loan = await shelf.connect(borrowerAccount).callStatic.issue(nft.address, tokenID)
-      await shelf.connect(borrowerAccount).issue(nft.address, tokenID)
-      const ceiling = await nftFeed.ceiling(loan)
-      expect(ceiling.toString()).equal(nftPrice.div(2).toString())
-      await nft.connect(borrowerAccount).setApprovalForAll(shelf.address, true)
-      const threshold = await nftFeed.threshold(loan)
-      return {
-        nft,
-        tokenID,
-        maturityDate,
-        tokenKey,
-        loan,
-        ceiling,
-        threshold
-      }
-    }
     const {
       nft,
       tokenID,
@@ -971,7 +876,7 @@ describe("ERC721 Borrow", function () {
       loan,
       ceiling,
       threshold
-    } = await setupLoan()
+    } = await setupLoan(borrowerAccount, shelf, nftFeed)
     
     console.log('Invest the debt')
 
@@ -999,7 +904,7 @@ describe("ERC721 Borrow", function () {
       receipt: closeReceipt
     })
 
-    let seniorValue = await seniorValues()
+    let seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
     // should not start the challenge period
     if (await coordinator.submissionPeriod() == true) {
@@ -1056,9 +961,9 @@ describe("ERC721 Borrow", function () {
     expect(await nft.ownerOf(tokenID)).to.equal(shelf.address)
     expect((await erc20.balanceOf(borrowerAccount.address)).toString()).to.equal(ceiling.toString())
 
-    let ns = await navs()
+    let ns = await navs(assessor)
     console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
-    seniorValue = await seniorValues()
+    seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
 
     // add one days
@@ -1073,9 +978,9 @@ describe("ERC721 Borrow", function () {
 
     // collect
     await timeFly(20)
-    ns = await navs()
+    ns = await navs(assessor)
     console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
-    seniorValue = await seniorValues()
+    seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
     let debt = await pile.connect(borrowerAccount).debt(loan)
     expect(debt.gt(threshold)).to.be.eq(true)
@@ -1107,9 +1012,9 @@ describe("ERC721 Borrow", function () {
 
     await shelf.connect(borrowerAccount).close(loan)
 
-    ns = await navs()
+    ns = await navs(assessor)
     console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
-    seniorValue = await seniorValues()
+    seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
 
     await coordinator.closeEpoch()
@@ -1118,9 +1023,9 @@ describe("ERC721 Borrow", function () {
       expect((await coordinator.submissionResult()).toNumber()).to.equal(0)
     }
 
-    ns = await navs()
+    ns = await navs(assessor)
     console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
-    seniorValue = await seniorValues()
+    seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
 
     console.log('====== Gas Used')
@@ -1161,59 +1066,10 @@ describe("ERC721 Borrow", function () {
     expect(root.address.length).to.equal(42)
     expect(borrowerDeployer.address.length).to.equal(42)
     expect(lenderDeployer.address.length).to.equal(42)
-    const navs = async () => {
-      return {
-        nav: (await assessor.callStatic['calcUpdateNAV()']()),
-        seniorTokenPrice: (await assessor.callStatic['calcSeniorTokenPrice()']()),
-        juniorTokenPrice: (await assessor.callStatic['calcJuniorTokenPrice()']())
-      }
-    }
-    const seniorValues = async () => {
-      return {
-        debt: (await assessor.callStatic['seniorDebt()']()),
-        balance: (await assessor.callStatic['seniorBalance()']())
-      }
-    }
+
     const borrowerAccount = signers[1]
     const seniorInvestors = [signers[2], signers[3], signers[4], signers[5]]
     const validUntil = (new Date).getTime() + 30 * 86400 * 1000
-    
-    const setupLoan = async () => {
-      const nft = await setupNFT()
-      // 10 ether
-      const nftPrice = ten.mul(ether)
-      const riskGroup = 2
-      // const abiCoder = new ethers.utils.AbiCoder()
-      // issue loan
-      await nft.issue(borrowerAccount.address)
-      const tokenID = (await nft.count()).sub(1)
-      // 30 days
-      const maturityDate = 1700000000
-      // it's different with keccak256(abi.encodePacked(nft.address, tokenID))
-      // const tokenKey = ethers.utils.keccak256(abiCoder.encode([{ type: 'address' }, { type: 'uint256' }], [nft.address, tokenID]))
-      const tokenKey = await nftFeed.callStatic['nftID(address,uint256)'](nft.address, tokenID)
-      // set nft price and risk
-      console.log(`Borrow NFT identifier ${tokenKey}`)
-      await nftFeed['update(bytes32,uint256,uint256)'](tokenKey, nftPrice, riskGroup)
-      await nftFeed['file(bytes32,bytes32,uint256)']('0x' + Buffer.from("maturityDate").toString('hex').padEnd(64, '0'), tokenKey, maturityDate)
-      console.log('Issue nft')
-      // issue nft
-      const loan = await shelf.connect(borrowerAccount).callStatic.issue(nft.address, tokenID)
-      await shelf.connect(borrowerAccount).issue(nft.address, tokenID)
-      const ceiling = await nftFeed.ceiling(loan)
-      expect(ceiling.toString()).equal(nftPrice.div(2).toString())
-      await nft.connect(borrowerAccount).setApprovalForAll(shelf.address, true)
-      const threshold = await nftFeed.threshold(loan)
-      return {
-        nft,
-        tokenID,
-        maturityDate,
-        tokenKey,
-        loan,
-        ceiling,
-        threshold
-      }
-    }
 
     console.log('Invest the debt')
 
@@ -1241,7 +1097,7 @@ describe("ERC721 Borrow", function () {
       receipt: closeReceipt
     })
 
-    let seniorValue = await seniorValues()
+    let seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
     // should not start the challenge period
     if (await coordinator.submissionPeriod() == true) {
@@ -1280,7 +1136,7 @@ describe("ERC721 Borrow", function () {
       loan,
       ceiling,
       threshold
-    } = await setupLoan()
+    } = await setupLoan(borrowerAccount, shelf, nftFeed)
 
     // make sure there are investment
     // withdraw loan
@@ -1309,9 +1165,9 @@ describe("ERC721 Borrow", function () {
     expect(await nft.ownerOf(tokenID)).to.equal(shelf.address)
     expect((await erc20.balanceOf(borrowerAccount.address)).toString()).to.equal(ceiling.toString())
 
-    let ns = await navs()
+    let ns = await navs(assessor)
     console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
-    seniorValue = await seniorValues()
+    seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
 
     // add one days
@@ -1326,9 +1182,9 @@ describe("ERC721 Borrow", function () {
 
     // collect
     await timeFly(20)
-    ns = await navs()
+    ns = await navs(assessor)
     console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
-    seniorValue = await seniorValues()
+    seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
     let debt = await pile.connect(borrowerAccount).debt(loan)
     expect(debt.gt(threshold)).to.be.eq(true)
@@ -1360,9 +1216,9 @@ describe("ERC721 Borrow", function () {
 
     await shelf.connect(borrowerAccount).close(loan)
 
-    ns = await navs()
+    ns = await navs(assessor)
     console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
-    seniorValue = await seniorValues()
+    seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
 
     await coordinator.closeEpoch()
@@ -1371,9 +1227,9 @@ describe("ERC721 Borrow", function () {
       expect((await coordinator.submissionResult()).toNumber()).to.equal(0)
     }
 
-    ns = await navs()
+    ns = await navs(assessor)
     console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
-    seniorValue = await seniorValues()
+    seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
 
     console.log('====== Gas Used')
