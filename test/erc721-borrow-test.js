@@ -1,7 +1,6 @@
 const { BigNumber } = require("@ethersproject/bignumber")
 const { expect } = require("chai")
 const { ethers } = require("hardhat")
-const { Contract } = require("ethers")
 
 const timeFly = async (days) => {
   await ethers.provider.send('evm_increaseTime', [ Math.floor(days * 86400) ])
@@ -16,6 +15,63 @@ const timeFlySeconds = async (seconds) => {
 describe("ERC721 Borrow", function () {
   const tokenName = "Mock DAI"
   const tokenSymbol = "DAI"
+
+  let titleFab
+  let shelfFab
+  let pileFab
+  let collectorFab
+  let navFeedFab
+  let reserveFab
+  let assessorFab
+  let trancheFab
+  let memberlistFab
+  let restrictedTokenFab
+  let operatorFab
+  let coordinatorFab
+
+  before(async () => {
+    const TitleFab = await ethers.getContractFactory("TitleFab")
+    titleFab = await TitleFab.deploy()
+
+    const ShelfFab = await ethers.getContractFactory("ShelfFab")
+    shelfFab = await ShelfFab.deploy()
+
+    const PileFab = await ethers.getContractFactory("PileFab")
+    pileFab = await PileFab.deploy()
+
+    const CollectorFab = await ethers.getContractFactory("CollectorFab")
+    collectorFab = await CollectorFab.deploy()
+
+    const NAVFeedFab = await ethers.getContractFactory("NAVFeedFab")
+    navFeedFab = await NAVFeedFab.deploy()
+
+    const ReserveFab = await ethers.getContractFactory("ReserveFab")
+    reserveFab = await ReserveFab.deploy()
+
+    const AssessorFab = await ethers.getContractFactory("AssessorFab")
+    assessorFab = await AssessorFab.deploy()
+
+    const TrancheFab = await ethers.getContractFactory("TrancheFab")
+    trancheFab = await TrancheFab.deploy()
+
+    const MemberlistFab = await ethers.getContractFactory("MemberlistFab")
+    memberlistFab = await MemberlistFab.deploy()
+
+    const RestrictedTokenFab = await ethers.getContractFactory("RestrictedTokenFab")
+    restrictedTokenFab = await RestrictedTokenFab.deploy()
+
+    const OperatorFab = await ethers.getContractFactory("OperatorFab")
+    operatorFab = await OperatorFab.deploy()
+
+    const CoordinatorFab = await ethers.getContractFactory("CoordinatorFab")
+    coordinatorFab = await CoordinatorFab.deploy()
+
+    signers = await ethers.getSigners()
+  })
+
+  beforeEach(async () => {
+    checkoutReceipts = []
+  })
 
   async function setupNFT() {
     const Title = await ethers.getContractFactory("Title")
@@ -37,25 +93,11 @@ describe("ERC721 Borrow", function () {
     const erc20 = await setupERC20()
     expect(await erc20.name()).to.equal(tokenName)
     expect(await erc20.symbol()).to.equal(tokenSymbol)
-    const signer = await ethers.getSigner()
+    const signer = signers[0]
     const Root = await ethers.getContractFactory("GalaxyRoot")
     const root = await Root.deploy(signer.address)
 
     // setup borrower
-    const TitleFab = await ethers.getContractFactory("TitleFab")
-    const titleFab = await TitleFab.deploy()
-
-    const ShelfFab = await ethers.getContractFactory("ShelfFab")
-    const shelfFab = await ShelfFab.deploy()
-
-    const PileFab = await ethers.getContractFactory("PileFab")
-    const pileFab = await PileFab.deploy()
-
-    const CollectorFab = await ethers.getContractFactory("CollectorFab")
-    const collectorFab = await CollectorFab.deploy()
-
-    const NAVFeedFab = await ethers.getContractFactory("NAVFeedFab")
-    const navFeedFab = await NAVFeedFab.deploy()
 
     const BorrowerDeployer = await ethers.getContractFactory("BorrowerDeployer")
     const borrowerDeployer = await BorrowerDeployer.deploy(root.address, titleFab.address, shelfFab.address, pileFab.address, collectorFab.address, navFeedFab.address, erc20.address, tokenName, tokenSymbol, discountRate)
@@ -83,27 +125,6 @@ describe("ERC721 Borrow", function () {
     const nftFeed = NAVFeed.attach(await borrowerDeployer.feed())
 
     // setup lender
-    const ReserveFab = await ethers.getContractFactory("ReserveFab")
-    const reserveFab = await ReserveFab.deploy()
-
-    const AssessorFab = await ethers.getContractFactory("AssessorFab")
-    const assessorFab = await AssessorFab.deploy()
-
-    const TrancheFab = await ethers.getContractFactory("TrancheFab")
-    const trancheFab = await TrancheFab.deploy()
-
-    const MemberlistFab = await ethers.getContractFactory("MemberlistFab")
-    const memberlistFab = await MemberlistFab.deploy()
-
-    const RestrictedTokenFab = await ethers.getContractFactory("RestrictedTokenFab")
-    const restrictedTokenFab = await RestrictedTokenFab.deploy()
-
-    const OperatorFab = await ethers.getContractFactory("OperatorFab")
-    const operatorFab = await OperatorFab.deploy()
-
-    const CoordinatorFab = await ethers.getContractFactory("CoordinatorFab")
-    const coordinatorFab = await CoordinatorFab.deploy()
-
     const LenderDeployer = await ethers.getContractFactory("LenderDeployer")
     const lenderDeployer = await LenderDeployer.deploy(root.address, erc20.address, trancheFab.address, memberlistFab.address, restrictedTokenFab.address, reserveFab.address, assessorFab.address, coordinatorFab.address, operatorFab.address)
     const tenp25 = BigNumber.from(10).pow(25)
@@ -292,11 +313,6 @@ describe("ERC721 Borrow", function () {
     }
     return count
   }
-
-  beforeEach(async () => {
-    checkoutReceipts = []
-    signers = await ethers.getSigners()
-  })
 
   it("should setup loan / borrow and repay all debt", async function () {
     const {
