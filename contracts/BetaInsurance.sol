@@ -24,6 +24,11 @@ contract BetaInsurance is ERC20, ERC20Burnable {
         address governance
     );
 
+    modifier onlyGovernance() {
+        require(msg.sender == governance, "BetaInsurance: only governance.");
+        _;
+    }
+
     constructor(
         address _token,
         address _governance
@@ -43,13 +48,11 @@ contract BetaInsurance is ERC20, ERC20Burnable {
         return token.balanceOf(address(this));
     }
 
-    function setMin(uint256 _min) external {
-        require(msg.sender == governance, "!governance");
+    function setMin(uint256 _min) external onlyGovernance {
         min = _min;
     }
 
-    function setGovernance(address _governance) public {
-        require(msg.sender == governance, "!governance");
+    function setGovernance(address _governance) public onlyGovernance {
         governance = _governance;
         emit GovernanceUpdated(_governance);
     }
@@ -60,7 +63,7 @@ contract BetaInsurance is ERC20, ERC20Burnable {
         return token.balanceOf(address(this)).mul(min).div(max);
     }
 
-    function earn() public {
+    function earn() public onlyGovernance {
         uint256 _bal = available();
         token.safeTransfer(msg.sender, _bal);
     }
