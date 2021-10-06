@@ -5,9 +5,10 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20Burnable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract BetaInsurance is ERC20 {
+contract BetaInsurance is ERC20, ERC20Burnable {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
