@@ -588,6 +588,12 @@ describe("BoostPool", () => {
           expect(await token.balanceOf(boostPool.address)).equal(poolTokenBefore.sub(unclaimAliceAmount.sub(penalty)));
           expect(await token.balanceOf(await Alice.getAddress())).equal(AliceTokenBefore.add(unclaimAliceAmount.sub(penalty)));
         });
+
+        it("it reverts if pools has no enough rewards", async () => {
+          await boostPool.connect(governance).setRewardRate(rewardToken);
+          await mineBlocks(10);
+          await expect(boostPool.connect(Alice).claimImmediately()).to.be.revertedWith("pool has no enough rewards")
+        })
       });
 
       context("user doesn't have deposited token", () => {
@@ -694,6 +700,12 @@ describe("BoostPool", () => {
           expect(boostPool.connect(Alice).claimImmediately()
           ).revertedWith("wait for the last cooldown period expired");
         });
+
+        it("it reverts if pools has no enough rewards", async () => {
+          await boostPool.connect(governance).setRewardRate(rewardToken);
+          await mineBlocks(10);
+          await expect(boostPool.connect(Alice).claim()).to.be.revertedWith("pool has no enough rewards")
+        })
 
         context("it claims reward successfully", () => {
           let unclaimAliceRewardBefore;

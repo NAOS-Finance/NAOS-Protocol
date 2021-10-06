@@ -260,6 +260,10 @@ contract BoostPool is ReentrancyGuard {
         _pool.distribute(penalty);
         _stake.totalUnclaimed = _stake.totalUnclaimed.sub(penalty);
 
+        if (address(reward) == address(_pool.token)) {
+            require(_pool.totalDeposited.add(_stake.totalUnclaimed) <= reward.balanceOf(address(this)), "pool has no enough rewards");
+        }
+
         _claim();
     }
 
@@ -280,6 +284,10 @@ contract BoostPool is ReentrancyGuard {
 
         Stake.Data storage _stake = _stakes[msg.sender];
         _stake.update(_pool, _ctx);
+
+        if (address(reward) == address(_pool.token)) {
+            require(_pool.totalDeposited.add(_stake.totalUnclaimed) <= reward.balanceOf(address(this)), "pool has no enough rewards");
+        }
 
         _claim();
     }
