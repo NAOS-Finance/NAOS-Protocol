@@ -70,7 +70,7 @@ library Pool {
         Data storage _data,
         Context storage _ctx
     ) internal view returns (FixedPointMath.uq192x64 memory) {
-        if (_data.totalDeposited == 0) {
+        if (_data.totalDepositedWeight == 0) {
             return _data.accumulatedRewardWeight;
         }
 
