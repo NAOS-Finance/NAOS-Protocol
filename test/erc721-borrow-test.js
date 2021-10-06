@@ -340,7 +340,7 @@ describe("ERC721 Borrow", function () {
     const tokenID = (await nft.count()).sub(1)
     console.log('NFT ID:', tokenID.toString())
     // 30 days
-    const maturityDate = 1700000000
+    const maturityDate = Math.floor((new Date).getTime() / 1000) + 365 * 86400
     // it's different with keccak256(abi.encodePacked(nft.address, tokenID))
     // const tokenKey = ethers.utils.keccak256(abiCoder.encode([{ type: 'address' }, { type: 'uint256' }], [nft.address, tokenID]))
     const tokenKey = await nftFeed.callStatic['nftID(address,uint256)'](nft.address, tokenID)
@@ -894,7 +894,7 @@ describe("ERC721 Borrow", function () {
     await supplyOrder(erc20, seniorTranche, seniorOperator, sAmount, seniorInvestors)
 
     // add one day (minimum times)
-    await timeFly(365)
+    await timeFly(1)
     // expect((await coordinator.validate(0, 0 , sAmount, jAmount)).toNumber()).to.equal(0)
     // should care about these variables when init: minSeniorRatio_, maxSeniorRatio_, maxReserve_
     const closeTx = await coordinator.closeEpoch()
@@ -1087,7 +1087,7 @@ describe("ERC721 Borrow", function () {
     await supplyOrder(erc20, seniorTranche, seniorOperator, sAmount, seniorInvestors)
 
     // add one day (minimum times)
-    await timeFly(365)
+    await timeFly(1)
     // expect((await coordinator.validate(0, 0 , sAmount, jAmount)).toNumber()).to.equal(0)
     // should care about these variables when init: minSeniorRatio_, maxSeniorRatio_, maxReserve_
     const closeTx = await coordinator.closeEpoch()
@@ -1131,7 +1131,7 @@ describe("ERC721 Borrow", function () {
     const {
       nft,
       tokenID,
-      // maturityDate,
+      maturityDate,
       // tokenKey,
       loan,
       ceiling,
@@ -1180,13 +1180,36 @@ describe("ERC721 Borrow", function () {
       expect((await coordinator.submissionResult()).toNumber()).to.equal(0)
     }
 
+    const shouldFlyDays = Math.ceil((maturityDate - Math.floor((new Date()).getTime() / 1000)) / 86400)
+    expect(await nftFeed.currentNAV()).to.be.gt(0)
+    console.log(`Fly ${shouldFlyDays} days`)
+    await timeFly(shouldFlyDays)
+    ns = await navs(assessor)
+    console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
+    seniorValue = await seniorValues(assessor)
+    console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
+    await pile.connect(borrowerAccount).accrue(loan)
+    let debt = await pile.connect(borrowerAccount).debt(loan)
+    console.log(`Current debt ${debt.toString()}`)
+    console.log('Fly 1 day')
+    await timeFly(1)
+    ns = await navs(assessor)
+    console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
+    seniorValue = await seniorValues(assessor)
+    console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
+    await pile.connect(borrowerAccount).accrue(loan)
+    debt = await pile.connect(borrowerAccount).debt(loan)
+    console.log(`Current debt ${debt.toString()}`)
+
     // collect
     await timeFly(20)
     ns = await navs(assessor)
     console.log(`NAV: ${ns.nav.toString()}, Reserve: ${(await coordinator.epochReserve()).toString()}, Senior token price: ${ns.seniorTokenPrice.toString()}, Junior token price: ${ns.juniorTokenPrice.toString()}`)
     seniorValue = await seniorValues(assessor)
     console.log(`Senior value debt: ${seniorValue.debt.toString()}, balance: ${seniorValue.balance.toString()}`)
-    let debt = await pile.connect(borrowerAccount).debt(loan)
+    await pile.connect(borrowerAccount).accrue(loan)
+    debt = await pile.connect(borrowerAccount).debt(loan)
+    console.log(`Current debt ${debt.toString()}`)
     expect(debt.gt(threshold)).to.be.eq(true)
     const signerAddress = signer.getAddress()
     const collectAmount = ceiling
