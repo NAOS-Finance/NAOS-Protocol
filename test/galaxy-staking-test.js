@@ -861,6 +861,10 @@ describe("Galaxy Staking Pools", () => {
     let BobDepositedAmount = parseEther("3000");
     let pool0ExpiredTime = 300;
     let pool1ExpiredTime = 600;
+    let lockTime0 = 90 * 86400;
+    let lockTime1 = 365 * 86400;
+    let weighted0 = 2;
+    let weighted1 = 4;
 
     beforeEach(async () => {
       [deployer, governance, Alice, Bob, ...signers] = signers;
@@ -903,6 +907,9 @@ describe("Galaxy Staking Pools", () => {
       await galaxyStakingPools.connect(governance).createPool(pool1ExpiredTime);
       await galaxyStakingPools.connect(governance).setRewardWeights([1, 4]);
 
+      await boostPool.connect(governance).setLockTimeWeighted(lockTime0, weighted0);
+      await boostPool.connect(governance).setLockTimeWeighted(lockTime1, weighted1);
+
       await currency.mint(Alice.getAddress(), mintAmount);
       await currency.mint(Bob.getAddress(), mintAmount);
       await currency.connect(Alice).approve(galaxyStakingPools.address, MAXIMUM_U256);
@@ -940,9 +947,9 @@ describe("Galaxy Staking Pools", () => {
         await token.connect(deployer).approve(boostPool.address, MAXIMUM_U256);
         await token.connect(Alice).approve(boostPool.address, MAXIMUM_U256);
         await token.connect(Bob).approve(boostPool.address, MAXIMUM_U256);
-        await boostPool.connect(deployer).deposit(mintAmount);
-        await boostPool.connect(Alice).deposit(AliceDepositedAmount);
-        await boostPool.connect(Bob).deposit(BobDepositedAmount);
+        await boostPool.connect(deployer).deposit(mintAmount, 0);
+        await boostPool.connect(Alice).deposit(AliceDepositedAmount, 0);
+        await boostPool.connect(Bob).deposit(BobDepositedAmount, 1);
       });
 
       it("it doesn't boost before interacting with galaxy staking pools", async () => {
@@ -960,9 +967,9 @@ describe("Galaxy Staking Pools", () => {
         });
 
         it("it boosts after interacting with galaxy staking pools", async () => {
-          let boostPoolTotalDeposited = await boostPool.getPoolTotalDeposited();
-          let AliceBoostPoolDeposited = (await boostPool.getStakeTotalDeposited(await Alice.getAddress()));
-          let BobBoostPoolDeposited = (await boostPool.getStakeTotalDeposited(await Bob.getAddress()));
+          let boostPoolTotalDepositedWeight = await boostPool.getPoolTotalDepositedWeight();
+          let AliceBoostPoolDepositedWeight = (await boostPool.getStakeTotalDepositedWeight(await Alice.getAddress()));
+          let BobBoostPoolDepositedWeight = (await boostPool.getStakeTotalDepositedWeight(await Bob.getAddress()));
           let pool0ToTatalDeposited = await galaxyStakingPools.getPoolTotalDeposited(0);
           let pool1ToTatalDeposited = await galaxyStakingPools.getPoolTotalDeposited(1);
           let AlicePool0TotalDepositedWeight = await galaxyStakingPools.getStakeTotalDepositedWeight(await Alice.getAddress(), 0);
@@ -971,10 +978,12 @@ describe("Galaxy Staking Pools", () => {
           let BobPool1TotalDepositedWeight = await galaxyStakingPools.getStakeTotalDepositedWeight(await Bob.getAddress(), 1);
 
 
-          expect(AlicePool0TotalDepositedWeight).equal(AliceDepositedAmount.mul(4).div(10).add(pool0ToTatalDeposited.mul(AliceBoostPoolDeposited).div(boostPoolTotalDeposited).mul(6).div(10)));
+          expect(AlicePool0TotalDepositedWeight).equal(AliceDepositedAmount.mul(4).div(10).add(pool0ToTatalDeposited.mul(AliceBoostPoolDepositedWeight).div(boostPoolTotalDepositedWeight).mul(6).div(10)));
           expect(AlicePool1TotalDepositedWeight).equal(BobDepositedAmount.mul(4).div(10));
-          expect(BobPool0TotalDepositedWeight).equal(BobDepositedAmount.mul(4).div(10).add(pool0ToTatalDeposited.mul(BobBoostPoolDeposited).div(boostPoolTotalDeposited).mul(6).div(10)));
-          expect(BobPool1TotalDepositedWeight).equal(AliceDepositedAmount.mul(4).div(10).add(pool1ToTatalDeposited.mul(BobBoostPoolDeposited).div(boostPoolTotalDeposited).mul(6).div(10)));
+          expect(BobPool0TotalDepositedWeight).equal(BobDepositedAmount.mul(4).div(10).add(pool0ToTatalDeposited.mul(BobBoostPoolDepositedWeight).div(boostPoolTotalDepositedWeight).mul(6).div(10)));
+          let estimatedBobPool1DepositedWeight = AliceDepositedAmount.mul(4).div(10).add(pool1ToTatalDeposited.mul(BobBoostPoolDepositedWeight).div(boostPoolTotalDepositedWeight).mul(6).div(10));
+          estimatedBobPool1DepositedWeight = (estimatedBobPool1DepositedWeight > AliceDepositedAmount) ? AliceDepositedAmount : estimatedBobPool1DepositedWeight;
+          expect(BobPool1TotalDepositedWeight).equal(estimatedBobPool1DepositedWeight);
           expect(await galaxyStakingPools.getPoolTotalDepositedWeight(0)).equal(AlicePool0TotalDepositedWeight.add(BobPool0TotalDepositedWeight));
           expect(await galaxyStakingPools.getPoolTotalDepositedWeight(1)).equal(AlicePool1TotalDepositedWeight.add(BobPool1TotalDepositedWeight));
         });

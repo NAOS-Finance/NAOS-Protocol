@@ -414,8 +414,8 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
         _updateWeighted(
             _pool,
             _stake,
-            boostPool.getPoolTotalDeposited(),
-            boostPool.getStakeTotalDeposited(msg.sender)
+            boostPool.getPoolTotalDepositedWeight(),
+            boostPool.getStakeTotalDepositedWeight(msg.sender)
         );
 
         require(_index.length <= depositedOrderCount, "invalid index");
@@ -471,11 +471,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     /// @param _poolId The pool to claim rewards from.
     ///
     /// @notice use this function to claim the tokens from a corresponding pool by ID.
-    function claim(uint256 _poolId)
-        external
-        onlyUpdated
-        nonReentrant
-    {
+    function claim(uint256 _poolId) external onlyUpdated nonReentrant {
         Pool.Data storage _pool = _pools.get(_poolId);
         _pool.update(_ctx);
 
@@ -517,14 +513,14 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
         uint256 reduceDepositedAmount;
         uint256 redeemTokenAmount;
         uint256 payoutCurrencyAmount;
-        uint256 poolTotalDeposited = boostPool.getPoolTotalDeposited();
+        uint256 poolTotalDeposited = boostPool.getPoolTotalDepositedWeight();
         _updatePools();
 
         for (uint256 i = redeemOrderListPendingIndex; i < end; i++) {
             DepositedOrder storage order = depositedOrderList[
                 redeemOrderList[i]
             ];
-            uint256 userTotalDeposited = boostPool.getStakeTotalDeposited(
+            uint256 userTotalDeposited = boostPool.getStakeTotalDepositedWeight(
                 order.owner
             );
             if (order.remainingRedeemToken >= remainingRedeemTokenAmount) {
@@ -615,8 +611,8 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
         _updateWeighted(
             _pool,
             _stake,
-            boostPool.getPoolTotalDeposited(),
-            boostPool.getStakeTotalDeposited(_account)
+            boostPool.getPoolTotalDepositedWeight(),
+            boostPool.getStakeTotalDepositedWeight(_account)
         );
     }
 
@@ -628,8 +624,10 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
         onlyUpdated
         nonReentrant
     {
-        uint256 poolTotalDeposited = boostPool.getPoolTotalDeposited();
-        uint256 userTotalDeposited = boostPool.getStakeTotalDeposited(_account);
+        uint256 poolTotalDepositedWeight = boostPool
+            .getPoolTotalDepositedWeight();
+        uint256 userTotalDepositedWeight = boostPool
+            .getStakeTotalDepositedWeight(_account);
 
         for (uint256 _poolId = 0; _poolId < _pools.length(); _poolId++) {
             Pool.Data storage _pool = _pools.get(_poolId);
@@ -641,8 +639,8 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
             _updateWeighted(
                 _pool,
                 _stake,
-                poolTotalDeposited,
-                userTotalDeposited
+                poolTotalDepositedWeight,
+                userTotalDepositedWeight
             );
         }
     }
@@ -847,22 +845,22 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     ///
     /// @param poolDeposited The total deposited in the pool.
     /// @param userDeposited The user deposited in the pool.
-    /// @param boostPoolDeposited The total deposited in the boost pool.
-    /// @param boostUserDeposited The user deposited in the boost pool.
+    /// @param boostPoolDepositedWeight The total deposited Weight in the boost pool.
+    /// @param boostUserDepositedWeight The user deposited Weight in the boost pool.
     ///
     /// @return the user boost weight in the pool.
     function calcUserWeight(
         uint256 poolDeposited,
         uint256 userDeposited,
-        uint256 boostPoolDeposited,
-        uint256 boostUserDeposited
+        uint256 boostPoolDepositedWeight,
+        uint256 boostUserDepositedWeight
     ) public view returns (uint256) {
         uint256 weighted = userDeposited.mul(40).div(100);
-        if (boostPoolDeposited > 0) {
+        if (boostPoolDepositedWeight > 0) {
             weighted = weighted.add(
                 poolDeposited
-                    .mul(boostUserDeposited)
-                    .div(boostPoolDeposited)
+                    .mul(boostUserDepositedWeight)
+                    .div(boostPoolDepositedWeight)
                     .mul(60)
                     .div(100)
             );
@@ -888,8 +886,8 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
         _updateWeighted(
             _pool,
             _stake,
-            boostPool.getPoolTotalDeposited(),
-            boostPool.getStakeTotalDeposited(msg.sender)
+            boostPool.getPoolTotalDepositedWeight(),
+            boostPool.getStakeTotalDepositedWeight(msg.sender)
         );
         currency.transferFrom(msg.sender, address(this), _amount);
 
@@ -914,8 +912,8 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
         _updateWeighted(
             _pool,
             _stake,
-            boostPool.getPoolTotalDeposited(),
-            boostPool.getStakeTotalDeposited(msg.sender)
+            boostPool.getPoolTotalDepositedWeight(),
+            boostPool.getStakeTotalDepositedWeight(msg.sender)
         );
 
         token.transfer(msg.sender, _claimAmount);
@@ -957,19 +955,19 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     ///
     /// @param _pool The pool information
     /// @param _stake The user information
-    /// @param boostPoolDeposited The total deposited token amount in boost pool
-    /// @param boostUserDeposited The user deposited token amount in boost pool
+    /// @param boostPoolDepositedWeight The total deposited token weight in boost pool
+    /// @param boostUserDepositedWeight The user deposited token weight in boost pool
     function _updateWeighted(
         Pool.Data storage _pool,
         Stake.Data storage _stake,
-        uint256 boostPoolDeposited,
-        uint256 boostUserDeposited
+        uint256 boostPoolDepositedWeight,
+        uint256 boostUserDepositedWeight
     ) internal {
         uint256 weight = calcUserWeight(
             _pool.totalDeposited,
             _stake.totalDeposited,
-            boostPoolDeposited,
-            boostUserDeposited
+            boostPoolDepositedWeight,
+            boostUserDepositedWeight
         );
 
         _pool.totalDepositedWeight = _pool
