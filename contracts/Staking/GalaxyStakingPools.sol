@@ -118,9 +118,6 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     /// @dev The redeem list.
     mapping(uint256 => uint256) public redeemOrderList;
 
-    /// @dev Deposited amount for each pool
-    mapping(uint256 => uint256) public depositedAmount;
-
     /// @dev token price of each epoch
     mapping(uint256 => uint256) public epochTokenPrice;
 
@@ -249,7 +246,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     /// @param _user The user address.
     /// @param _state The admin state which will be set.
     function setAdmin(address _user, bool _state) external onlyGov {
-        admins[_user] = true;
+        admins[_user] = _state;
 
         emit AdminUpdated(_user, _state);
     }
@@ -259,7 +256,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     /// @param _user The user address.
     /// @param _state The whitelist state which will be set.
     function setWhitelist(address _user, bool _state) external onlyAdmins {
-        whitelist[_user] = true;
+        whitelist[_user] = _state;
 
         emit WhitelistUpdated(_user, _state);
     }
@@ -375,14 +372,13 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
         _pool.update(_ctx);
 
         require(
-            depositedAmount[_poolId].add(_amount) <= _pool.ceiling,
+            _pool.totalDeposited.add(_amount) <= _pool.ceiling,
             "exceed deposited ceiling"
         );
 
         Stake.Data storage _stake = _stakes[msg.sender][_poolId];
         _stake.update(_pool, _ctx);
 
-        depositedAmount[_poolId] = depositedAmount[_poolId].add(_amount);
         depositedOrderList[depositedOrderCount] = DepositedOrder({
             owner: msg.sender,
             poolId: _poolId,
@@ -406,7 +402,6 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     /// @param _index deposited order index which will be redeemed
     function redeem(uint256 _poolId, uint256[] calldata _index)
         external
-        onlyWhitelist
         onlyUpdated
         nonReentrant
     {
@@ -461,7 +456,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
 
     /// @dev Withdraw unclaimed currency.
     ///
-    function withdraw() external onlyWhitelist onlyUpdated nonReentrant {
+    function withdraw() external onlyUpdated nonReentrant {
         require(userUnclaimedCurrency[msg.sender] > 0, "No unclaimed currency");
 
         uint256 unclaimedAmount = userUnclaimedCurrency[msg.sender];
@@ -478,7 +473,6 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     /// @notice use this function to claim the tokens from a corresponding pool by ID.
     function claim(uint256 _poolId)
         external
-        onlyWhitelist
         onlyUpdated
         nonReentrant
     {
