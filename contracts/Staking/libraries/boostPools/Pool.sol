@@ -32,24 +32,16 @@ library Pool {
     ///
     /// @param _ctx the pool context.
     function update(Data storage _data, Context storage _ctx) internal {
-        _data.accumulatedRewardWeight = _data.getUpdatedAccumulatedRewardWeight(
-            _ctx
-        );
+        _data.accumulatedRewardWeight = _data.getUpdatedAccumulatedRewardWeight(_ctx);
         _data.lastUpdatedBlock = block.number;
     }
 
     /// @dev distribute rewards to other users.
     ///
     /// @param _distributeAmount the amount will be distributed.
-    function distribute(Data storage _data, uint256 _distributeAmount)
-        internal
-    {
-        FixedPointMath.uq192x64 memory distributeAmount = FixedPointMath
-            .fromU256(_distributeAmount)
-            .div(_data.totalDeposited);
-        _data.accumulatedRewardWeight = _data.accumulatedRewardWeight.add(
-            distributeAmount
-        );
+    function distribute(Data storage _data, uint256 _distributeAmount) internal {
+        FixedPointMath.uq192x64 memory distributeAmount = FixedPointMath.fromU256(_distributeAmount).div(_data.totalDeposited);
+        _data.accumulatedRewardWeight = _data.accumulatedRewardWeight.add(distributeAmount);
     }
 
     /// @dev Gets the accumulated reward weight of a pool.
@@ -57,10 +49,7 @@ library Pool {
     /// @param _ctx the pool context.
     ///
     /// @return the accumulated reward weight.
-    function getUpdatedAccumulatedRewardWeight(
-        Data storage _data,
-        Context storage _ctx
-    ) internal view returns (FixedPointMath.uq192x64 memory) {
+    function getUpdatedAccumulatedRewardWeight(Data storage _data, Context storage _ctx) internal view returns (FixedPointMath.uq192x64 memory) {
         if (_data.totalDeposited == 0) {
             return _data.accumulatedRewardWeight;
         }
@@ -76,9 +65,7 @@ library Pool {
             return _data.accumulatedRewardWeight;
         }
 
-        FixedPointMath.uq192x64 memory _rewardWeight = FixedPointMath
-            .fromU256(_distributeAmount)
-            .div(_data.totalDeposited);
+        FixedPointMath.uq192x64 memory _rewardWeight = FixedPointMath.fromU256(_distributeAmount).div(_data.totalDeposited);
         return _data.accumulatedRewardWeight.add(_rewardWeight);
     }
 

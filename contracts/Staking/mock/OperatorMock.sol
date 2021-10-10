@@ -10,7 +10,7 @@ contract OperatorMock {
     IERC20 currency;
     IERC20 token;
     uint256 supplyAmount = 0;
-    uint256 redeemAmount = 0; 
+    uint256 redeemAmount = 0;
 
     constructor(IERC20 _currency, IERC20 _token) public {
         currency = _currency;

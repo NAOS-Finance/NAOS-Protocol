@@ -50,11 +50,7 @@ contract BoostPool is ReentrancyGuard {
 
     event TokensClaimed(address indexed user, uint256 amount);
 
-    event CooldownStart(
-        address indexed user,
-        uint256 claimStart,
-        uint256 claimEnd
-    );
+    event CooldownStart(address indexed user, uint256 claimStart, uint256 claimEnd);
 
     /// @dev The token which will be minted as a reward for staking.
     IERC20 public reward;
@@ -84,8 +80,7 @@ contract BoostPool is ReentrancyGuard {
     mapping(address => uint256) public userOrderCount;
 
     /// @dev The record of user's deposited orders.
-    mapping(address => mapping(uint256 => UserDepositedOrder))
-        public userDepositedOrder;
+    mapping(address => mapping(uint256 => UserDepositedOrder)) public userDepositedOrder;
 
     /// @dev The cooldown period for each user.
     mapping(address => Cooldown) public userCooldown;
@@ -104,18 +99,9 @@ contract BoostPool is ReentrancyGuard {
         IERC20 _reward,
         address _governance
     ) public {
-        require(
-            address(_token) != address(0),
-            "BoostPool: token address cannot be 0x0"
-        );
-        require(
-            address(_reward) != address(0),
-            "BoostPool: reward address cannot be 0x0"
-        );
-        require(
-            _governance != address(0),
-            "BoostPool: governance address cannot be 0x0"
-        );
+        require(address(_token) != address(0), "BoostPool: token address cannot be 0x0");
+        require(address(_reward) != address(0), "BoostPool: reward address cannot be 0x0");
+        require(_governance != address(0), "BoostPool: governance address cannot be 0x0");
 
         pool.set(_token);
 
@@ -136,24 +122,15 @@ contract BoostPool is ReentrancyGuard {
     /// This function can only called by the current governance.
     ///
     /// @param _pendingGovernance the new pending governance.
-    function setPendingGovernance(address _pendingGovernance)
-        external
-        onlyGovernance
-    {
-        require(
-            _pendingGovernance != address(0),
-            "BoostPool: pending governance address cannot be 0x0"
-        );
+    function setPendingGovernance(address _pendingGovernance) external onlyGovernance {
+        require(_pendingGovernance != address(0), "BoostPool: pending governance address cannot be 0x0");
         pendingGovernance = _pendingGovernance;
 
         emit PendingGovernanceUpdated(_pendingGovernance);
     }
 
     function acceptGovernance() external {
-        require(
-            msg.sender == pendingGovernance,
-            "BoostPool: only pending governance"
-        );
+        require(msg.sender == pendingGovernance, "BoostPool: only pending governance");
 
         governance = pendingGovernance;
 
@@ -184,14 +161,8 @@ contract BoostPool is ReentrancyGuard {
     /// @dev set penalty percent
     ///
     /// @param _penaltyPercent the percent of reward will be distributed to other users
-    function setPenaltyPercent(uint256 _penaltyPercent)
-        external
-        onlyGovernance
-    {
-        require(
-            _penaltyPercent <= 100,
-            "BoostPool: penalty percent should be less or equal to 100"
-        );
+    function setPenaltyPercent(uint256 _penaltyPercent) external onlyGovernance {
+        require(_penaltyPercent <= 100, "BoostPool: penalty percent should be less or equal to 100");
         penaltyPercent = _penaltyPercent;
 
         emit PenaltyPercentUpdated(_penaltyPercent);
@@ -224,15 +195,10 @@ contract BoostPool is ReentrancyGuard {
 
         uint256 withdrawAmount;
         for (uint256 i = 0; i < _index.length; i++) {
-            UserDepositedOrder storage depositedOrder = userDepositedOrder[
-                msg.sender
-            ][_index[i]];
+            UserDepositedOrder storage depositedOrder = userDepositedOrder[msg.sender][_index[i]];
             require(_index[i] < userOrderCount[msg.sender], "invalid index");
             require(!depositedOrder.isWithdraw, "The order has been withdrew");
-            require(
-                depositedOrder.depositedTime.add(LOCK_TIME) < block.timestamp,
-                "The lock time is not expired!"
-            );
+            require(depositedOrder.depositedTime.add(LOCK_TIME) < block.timestamp, "The lock time is not expired!");
             depositedOrder.isWithdraw = true;
             withdrawAmount = withdrawAmount.add(depositedOrder.amount);
         }
@@ -243,10 +209,7 @@ contract BoostPool is ReentrancyGuard {
     /// @dev Claims all rewarded tokens from a pool.
     function claimImmediately() external nonReentrant {
         Cooldown memory cooldown = userCooldown[msg.sender];
-        require(
-            cooldown.claimEnd < block.timestamp,
-            "wait for the last cooldown period expired"
-        );
+        require(cooldown.claimEnd < block.timestamp, "wait for the last cooldown period expired");
 
         Pool.Data storage _pool = pool.get();
         _pool.update(_ctx);
@@ -254,9 +217,7 @@ contract BoostPool is ReentrancyGuard {
         Stake.Data storage _stake = _stakes[msg.sender];
         _stake.update(_pool, _ctx);
 
-        uint256 penalty = _stake.totalUnclaimed.mul(penaltyPercent).div(
-            PERCENT_RESOLUTION
-        );
+        uint256 penalty = _stake.totalUnclaimed.mul(penaltyPercent).div(PERCENT_RESOLUTION);
         _pool.distribute(penalty);
         _stake.totalUnclaimed = _stake.totalUnclaimed.sub(penalty);
 
@@ -270,11 +231,7 @@ contract BoostPool is ReentrancyGuard {
     /// @dev Claims all rewarded tokens from a pool.
     function claim() external nonReentrant {
         Cooldown storage cooldown = userCooldown[msg.sender];
-        require(
-            cooldown.claimStart <= block.timestamp &&
-                cooldown.claimEnd >= block.timestamp,
-            "not in the claim period!"
-        );
+        require(cooldown.claimStart <= block.timestamp && cooldown.claimEnd >= block.timestamp, "not in the claim period!");
 
         cooldown.claimStart = 0;
         cooldown.claimEnd = 0;
@@ -295,10 +252,7 @@ contract BoostPool is ReentrancyGuard {
     /// @dev lead user into cooldown period.
     function startCoolDown() public nonReentrant {
         Cooldown storage cooldown = userCooldown[msg.sender];
-        require(
-            cooldown.claimEnd < block.timestamp,
-            "wait for the last cooldown period expired"
-        );
+        require(cooldown.claimEnd < block.timestamp, "wait for the last cooldown period expired");
         cooldown.claimStart = block.timestamp + cooldownPeriod;
         cooldown.claimEnd = block.timestamp + cooldownPeriod + CLAIM_PERIOD;
 
@@ -344,11 +298,7 @@ contract BoostPool is ReentrancyGuard {
     /// @param _account The account to query.
     ///
     /// @return the amount of deposited tokens.
-    function getStakeTotalDeposited(address _account)
-        external
-        view
-        returns (uint256)
-    {
+    function getStakeTotalDeposited(address _account) external view returns (uint256) {
         Stake.Data storage _stake = _stakes[_account];
         return _stake.totalDeposited;
     }
@@ -358,17 +308,11 @@ contract BoostPool is ReentrancyGuard {
     /// @param _account The account to get the unclaimed balance of.
     ///
     /// @return the amount of unclaimed reward tokens a user has in a pool.
-    function getStakeTotalUnclaimedImmediately(address _account)
-        external
-        view
-        returns (uint256)
-    {
+    function getStakeTotalUnclaimedImmediately(address _account) external view returns (uint256) {
         Stake.Data storage _stake = _stakes[_account];
 
         uint256 updatedTotalUnclaimed = _stake.getUpdatedTotalUnclaimed(pool.get(), _ctx);
-        uint256 penalty = updatedTotalUnclaimed.mul(penaltyPercent).div(
-            PERCENT_RESOLUTION
-        );
+        uint256 penalty = updatedTotalUnclaimed.mul(penaltyPercent).div(PERCENT_RESOLUTION);
 
         return updatedTotalUnclaimed.sub(penalty);
     }
@@ -378,11 +322,7 @@ contract BoostPool is ReentrancyGuard {
     /// @param _account The account to get the unclaimed balance of.
     ///
     /// @return the amount of unclaimed reward tokens a user has in a pool.
-    function getStakeTotalUnclaimed(address _account)
-        external
-        view
-        returns (uint256)
-    {
+    function getStakeTotalUnclaimed(address _account) external view returns (uint256) {
         Stake.Data storage _stake = _stakes[_account];
         return _stake.getUpdatedTotalUnclaimed(pool.get(), _ctx);
     }
@@ -392,11 +332,7 @@ contract BoostPool is ReentrancyGuard {
     /// @param _account The user account.
     ///
     /// @return count the count of user's deposited order.
-    function getUserOrderCount(address _account)
-        external
-        view
-        returns (uint256 count)
-    {
+    function getUserOrderCount(address _account) external view returns (uint256 count) {
         return userOrderCount[_account];
     }
 
@@ -417,14 +353,8 @@ contract BoostPool is ReentrancyGuard {
             bool isWithdraw
         )
     {
-        UserDepositedOrder memory userDepositedOrder = userDepositedOrder[
-            _account
-        ][_index];
-        return (
-            userDepositedOrder.amount,
-            userDepositedOrder.depositedTime,
-            userDepositedOrder.isWithdraw
-        );
+        UserDepositedOrder memory userDepositedOrder = userDepositedOrder[_account][_index];
+        return (userDepositedOrder.amount, userDepositedOrder.depositedTime, userDepositedOrder.isWithdraw);
     }
 
     /// @dev Gets user's claim reward period.
@@ -433,15 +363,9 @@ contract BoostPool is ReentrancyGuard {
     ///
     /// @return claimStart the start time that user can claim reward.
     /// @return claimEnd the end time that user can claim reward.
-    function getUserClaimPeriod(address _account) external view returns (
-        uint256 claimStart,
-        uint256 claimEnd
-    ) {
+    function getUserClaimPeriod(address _account) external view returns (uint256 claimStart, uint256 claimEnd) {
         Cooldown memory cooldown = userCooldown[_account];
-        return (
-            cooldown.claimStart,
-            cooldown.claimEnd
-        );
+        return (cooldown.claimStart, cooldown.claimEnd);
     }
 
     /// @dev Stakes tokens into a pool.
@@ -456,9 +380,7 @@ contract BoostPool is ReentrancyGuard {
         _pool.totalDeposited = _pool.totalDeposited.add(_depositAmount);
         _stake.totalDeposited = _stake.totalDeposited.add(_depositAmount);
 
-        userDepositedOrder[msg.sender][
-            userOrderCount[msg.sender]
-        ] = UserDepositedOrder({
+        userDepositedOrder[msg.sender][userOrderCount[msg.sender]] = UserDepositedOrder({
             amount: _depositAmount,
             depositedTime: block.timestamp,
             isWithdraw: false

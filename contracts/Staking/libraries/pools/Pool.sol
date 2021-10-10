@@ -41,9 +41,7 @@ library Pool {
     ///
     /// @param _ctx the pool context.
     function update(Data storage _data, Context storage _ctx) internal {
-        _data.accumulatedRewardWeight = _data.getUpdatedAccumulatedRewardWeight(
-            _ctx
-        );
+        _data.accumulatedRewardWeight = _data.getUpdatedAccumulatedRewardWeight(_ctx);
         _data.lastUpdatedBlock = block.number;
     }
 
@@ -52,13 +50,8 @@ library Pool {
     /// @param _ctx the pool context.
     ///
     /// @return the reward rate of the pool in tokens per block.
-    function getRewardRate(Data storage _data, Context storage _ctx)
-        internal
-        view
-        returns (uint256)
-    {
-        return
-            _ctx.rewardRate.mul(_data.rewardWeight).div(_ctx.totalRewardWeight);
+    function getRewardRate(Data storage _data, Context storage _ctx) internal view returns (uint256) {
+        return _ctx.rewardRate.mul(_data.rewardWeight).div(_ctx.totalRewardWeight);
     }
 
     /// @dev Gets the accumulated reward weight of a pool.
@@ -66,10 +59,7 @@ library Pool {
     /// @param _ctx the pool context.
     ///
     /// @return the accumulated reward weight.
-    function getUpdatedAccumulatedRewardWeight(
-        Data storage _data,
-        Context storage _ctx
-    ) internal view returns (FixedPointMath.uq192x64 memory) {
+    function getUpdatedAccumulatedRewardWeight(Data storage _data, Context storage _ctx) internal view returns (FixedPointMath.uq192x64 memory) {
         if (_data.totalDepositedWeight == 0) {
             return _data.accumulatedRewardWeight;
         }
@@ -86,9 +76,7 @@ library Pool {
             return _data.accumulatedRewardWeight;
         }
 
-        FixedPointMath.uq192x64 memory _rewardWeight = FixedPointMath
-            .fromU256(_distributeAmount)
-            .div(_data.totalDepositedWeight);
+        FixedPointMath.uq192x64 memory _rewardWeight = FixedPointMath.fromU256(_distributeAmount).div(_data.totalDepositedWeight);
         return _data.accumulatedRewardWeight.add(_rewardWeight);
     }
 
@@ -104,11 +92,7 @@ library Pool {
     /// @param _index the index in the list.
     ///
     /// @return the element at the specified index.
-    function get(List storage _self, uint256 _index)
-        internal
-        view
-        returns (Data storage)
-    {
+    function get(List storage _self, uint256 _index) internal view returns (Data storage) {
         return _self.elements[_index];
     }
 
