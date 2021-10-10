@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.6.12;
 
-import {Math} from "@openzeppelin/contracts/math/Math.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import {SafeMath} from "@openzeppelin/contracts/math/SafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IVaultAdapter} from "../../Interfaces/IVaultAdapter.sol";
@@ -14,7 +12,6 @@ import {IVaultAdapter} from "../../Interfaces/IVaultAdapter.sol";
 library Vault {
   using Vault for Data;
   using Vault for List;
-  using SafeERC20 for IERC20;
   using SafeMath for uint256;
 
   struct Data {
@@ -47,7 +44,7 @@ library Vault {
     // Push the token that the vault accepts onto the stack to save gas.
     IERC20 _token = _self.token();
 
-    _token.safeTransfer(address(_self.adapter), _amount);
+    _token.transfer(address(_self.adapter), _amount);
     _self.adapter.deposit(_amount);
     _self.totalDeposited = _self.totalDeposited.add(_amount);
 

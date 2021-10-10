@@ -1,19 +1,17 @@
 pragma solidity ^0.6.12;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeMath} from "@openzeppelin/contracts/math/SafeMath.sol";
-import {Address} from "@openzeppelin/contracts/utils/Address.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {ERC20Burnable} from "@openzeppelin/contracts/token/ERC20/ERC20Burnable.sol";
+import {SafeMathUpgradeable} from "@openzeppelin/contracts-upgradeable/math/SafeMathUpgradeable.sol";
+import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+
 import {IBetaTransmuter} from "./Interfaces/IBetaTransmuter.sol";
-import {IUniswapV2Router02} from "./Interfaces/IUniswapV2Router02.sol";
+import {IUniswapV2Router01} from "./Interfaces/IUniswapV2Router01.sol";
 import {IStakingPoolWithTransfer} from "./Interfaces/IStakingPoolWithTransfer.sol";
 import {IVaultAdapter} from "./Interfaces/IVaultAdapter.sol";
 import {Vault} from "./libraries/betaInsurance/Vault.sol";
 
-contract BetaInsurance is ERC20, ERC20Burnable {
-    using Address for address;
-    using SafeMath for uint256;
+contract BetaInsurance is ERC20Upgradeable {
+    using SafeMathUpgradeable for uint256;
     using Vault for Vault.Data;
     using Vault for Vault.List;
 
@@ -59,7 +57,7 @@ contract BetaInsurance is ERC20, ERC20Burnable {
     IBetaTransmuter public transmuter;
 
     /// @dev the dex which can swap currency into naos
-    IUniswapV2Router02 public uniV2Router;
+    IUniswapV2Router01 public uniV2Router;
 
     /// @dev the staking pool which naos will be distribued in
     IStakingPoolWithTransfer public stakingPool;
@@ -149,13 +147,13 @@ contract BetaInsurance is ERC20, ERC20Burnable {
     );
 
     modifier onlyGovernance() {
-        require(msg.sender == governance, "BetaInsurance: only governance.");
+        require(msg.sender == governance, "only governance.");
         _;
     }
 
     /// @dev Checks that the current message sender or caller is the admin address.
     modifier onlyAdmins() {
-        require(admins[msg.sender], "BetaInsurance: !admin");
+        require(admins[msg.sender], "!admin");
         _;
     }
 
@@ -164,50 +162,32 @@ contract BetaInsurance is ERC20, ERC20Burnable {
         _;
     }
 
-    constructor(
+    function initialize(
         IERC20 _token,
         IERC20 _currency,
         IERC20 _naos,
         IERC20 _wbnb,
-        IUniswapV2Router02 _uniV2Router,
+        IUniswapV2Router01 _uniV2Router,
         IBetaTransmuter _transmuter,
         address _governance,
         address _treasury
-    ) public ERC20("Beta Insurance Token", "Beta") {
+    ) public initializer {
+        require(address(_token) != ZERO_ADDRESS, "token cannot be 0x0");
+        require(address(_currency) != ZERO_ADDRESS, "currency cannot be 0x0");
+        require(address(_naos) != ZERO_ADDRESS, "NAOS Token cannot be 0x0");
+        require(address(_wbnb) != ZERO_ADDRESS, "WBNB cannot be 0x0");
         require(
-            address(_token) != address(0),
-            "BetaInsurance: token address cannot be 0x0"
+            address(_uniV2Router) != ZERO_ADDRESS,
+            "swapRouter cannot be 0x0"
         );
         require(
-            address(_currency) != address(0),
-            "BetaInsurance: currency address cannot be 0x0"
+            address(_transmuter) != ZERO_ADDRESS,
+            "transmuter cannot be 0x0"
         );
-        require(
-            address(_naos) != address(0),
-            "BetaInsurance: NAOS Token address cannot be 0x0"
-        );
-        require(
-            address(_wbnb) != address(0),
-            "BetaInsurance: WBNB address cannot be 0x0"
-        );
-        require(
-            address(_uniV2Router) != address(0),
-            "BetaInsurance: swapRouter address cannot be 0x0"
-        );
-        require(
-            address(_transmuter) != address(0),
-            "BetaInsurance: transmuter address cannot be 0x0"
-        );
-        require(_transmuter.NToken() == address(token));
-        require(_transmuter.Token() == address(currency));
-        require(
-            _governance != address(0),
-            "BetaInsurance: governance address cannot be 0x0"
-        );
-        require(
-            _treasury != address(0),
-            "BetaInsurance: treasury address cannot be 0x0"
-        );
+        require(_transmuter.NToken() == address(_token));
+        require(_transmuter.Token() == address(_currency));
+        require(_governance != ZERO_ADDRESS, "governance cannot be 0x0");
+        require(_treasury != ZERO_ADDRESS, "treasury cannot be 0x0");
         token = _token;
         currency = _currency;
         naos = _naos;
@@ -216,6 +196,8 @@ contract BetaInsurance is ERC20, ERC20Burnable {
         transmuter = _transmuter;
         governance = _governance;
         treasury = _treasury;
+
+        __ERC20_init("Beta Insurance Token", "Beta");
     }
 
     /// @dev Sets the pending governance.
@@ -225,7 +207,7 @@ contract BetaInsurance is ERC20, ERC20Burnable {
         external
         onlyGovernance
     {
-        require(_pendingGovernance != ZERO_ADDRESS, "BetaInsurance: 0 gov");
+        require(_pendingGovernance != ZERO_ADDRESS, "0 gov");
 
         pendingGovernance = _pendingGovernance;
 
@@ -321,8 +303,8 @@ contract BetaInsurance is ERC20, ERC20Burnable {
         require(balance().sub(r) >= lockAmount, "no enough quota");
         _burn(msg.sender, _shares);
 
-        _withdrawTo(r, msg.sender);
-        TokenWithdrawn(msg.sender, r, _shares);
+        _withdrawTo(true, r, msg.sender);
+        emit TokenWithdrawn(msg.sender, r, _shares);
     }
 
     /// @dev The pool total deposited which includes the tokens in the pool and transmuter, the currency in the pool and vault
@@ -354,7 +336,7 @@ contract BetaInsurance is ERC20, ERC20Burnable {
     {
         require(
             address(_transmuter) != ZERO_ADDRESS,
-            "Formation: transmuter address cannot be 0x0."
+            "transmuter cannot be 0x0."
         );
         require(_transmuter.NToken() == address(token));
         require(_transmuter.Token() == address(currency));
@@ -414,11 +396,11 @@ contract BetaInsurance is ERC20, ERC20Burnable {
     ///
     /// @param _adapter the adapter for the new active vault.
     function updateActiveVault(IVaultAdapter _adapter) external onlyGovernance {
-        require(treasury != ZERO_ADDRESS, "reward address should not be 0x0");
+        require(treasury != ZERO_ADDRESS, "reward cannot be 0x0");
 
         require(
             _adapter != IVaultAdapter(ZERO_ADDRESS),
-            "active vault address cannot be 0x0."
+            "active vault cannot be 0x0."
         );
         require(
             address(_adapter.token()) == address(currency),
@@ -490,7 +472,7 @@ contract BetaInsurance is ERC20, ERC20Burnable {
             uint256 _distributeAmount = _harvestedAmount.sub(_feeAmount);
 
             if (_feeAmount > 0) {
-                token.transfer(treasury, _feeAmount);
+                currency.transfer(treasury, _feeAmount);
             }
         }
 
@@ -509,7 +491,7 @@ contract BetaInsurance is ERC20, ERC20Burnable {
     {
         require(
             emergencyExit && (msg.sender == governance || admins[msg.sender]),
-            "not paused, or not governance or sentinel"
+            "not paused, or not governance or admin"
         );
 
         Vault.Data storage _vault = _vaults.get(_vaultId);
@@ -658,6 +640,10 @@ contract BetaInsurance is ERC20, ERC20Burnable {
         _pathNAOS[0] = address(currency);
         _pathNAOS[1] = address(wbnb);
         _pathNAOS[2] = address(naos);
+        currency.approve(
+            address(uniV2Router),
+            insurancePolicy.premiumCurrencyAmount
+        );
         uniV2Router.swapExactTokensForTokens(
             insurancePolicy.premiumCurrencyAmount,
             _naosAmountOutMin,
@@ -771,7 +757,7 @@ contract BetaInsurance is ERC20, ERC20Burnable {
         ];
         require(
             insurancePolicy.isValid,
-            "The insurance policy has been effective"
+            "The insurance policy is not effective"
         );
         require(
             insurancePolicy.insuranceAmount >= _amount,
@@ -779,13 +765,13 @@ contract BetaInsurance is ERC20, ERC20Burnable {
         );
         require(insurancePolicy.isLock, "The insurance has been unlock");
         require(
-            insurancePolicy.expiredTime <= block.timestamp,
+            insurancePolicy.expiredTime >= block.timestamp,
             "The insurance is expired"
         );
 
         insurancePolicy.isLock = false;
         lockAmount = lockAmount.sub(insurancePolicy.insuranceAmount);
-        _withdrawTo(_amount, insurancePolicy.issuer);
+        _withdrawTo(false, _amount, insurancePolicy.issuer);
 
         emit insurancePolicyUpdated(_insuranceID);
         emit Compensate(_insuranceID, _amount);
@@ -805,7 +791,7 @@ contract BetaInsurance is ERC20, ERC20Burnable {
         ];
         require(insurancePolicy.isLock, "The insurance has been unlock");
         require(
-            insurancePolicy.expiredTime > block.timestamp,
+            insurancePolicy.expiredTime < block.timestamp,
             "cannot suspend unexpired insurance"
         );
 
@@ -869,57 +855,107 @@ contract BetaInsurance is ERC20, ERC20Burnable {
 
     /// @dev withdraw amount to an address.
     ///
+    /// @param _isWithdraw if yes, transfer token first, and then currency. if no, transfer currency first, and then token
     /// @param _amount the amount which will be withdrawn.
     /// @param _to the address which will receive the tokens and currency
-    function _withdrawTo(uint256 _amount, address _to) internal {
-        // Check balance
-        uint256 b = token.balanceOf(address(this));
-
-        // Take tokens from transmuter first
-        if (b < _amount) {
-            uint256 _withdraw = _amount.sub(b);
-            if (transmuter.totalSupplyNtokens() > 0) {
-                (
-                    uint256 depositedN,
-                    uint256 pendingdivs,
-                    uint256 inbucket,
-                    uint256 realised
-                ) = transmuter.userInfo(address(this));
-                if (depositedN > pendingdivs.add(inbucket)) {
-                    if (
-                        depositedN.sub(pendingdivs).sub(inbucket) >= _withdraw
-                    ) {
-                        transmuter.unstake(_withdraw);
-                    } else {
-                        if (pendingdivs > 0 || inbucket > 0) {
-                            transmuter.transmuteClaimAndWithdraw();
-                        }
-                    }
-                } else {
-                    transmuter.transmuteAndClaim();
-                }
+    function _withdrawTo(
+        bool _isWithdraw,
+        uint256 _amount,
+        address _to
+    ) internal {
+        if (transmuter.depositedNTokens(address(this)) > 0) {
+            (
+                uint256 depositedN,
+                uint256 pendingdivs,
+                uint256 inbucket,
+                uint256 realised
+            ) = transmuter.userInfo(address(this));
+            if (pendingdivs.add(inbucket) > 0) {
+                transmuter.transmuteAndClaim();
             }
         }
 
-        // If the money us not enough, get the money from vault
-        b = token.balanceOf(address(this));
         uint256 diff;
-        if (b >= _amount) {
-            token.transfer(_to, _amount);
-            return;
+        if (_isWithdraw) {
+            diff = _withdraw(token, _amount, _to);
+            if (diff == 0) return;
+            diff = _unstakeTokenFromTransmuter(diff, _to);
+            if (diff == 0) return;
+            diff = _withdraw(currency, diff, _to);
+            if (diff == 0) return;
+            diff = _withdrawCurrencyFromVault(diff, _to);
         } else {
-            token.transfer(_to, b);
-            diff = _amount.sub(b);
+            diff = _withdraw(currency, _amount, _to);
+            if (diff == 0) return;
+            diff = _withdrawCurrencyFromVault(diff, _to);
+            if (diff == 0) return;
+            diff = _withdraw(token, diff, _to);
+            if (diff == 0) return;
+            diff = _unstakeTokenFromTransmuter(diff, _to);
         }
-        uint256 c = currency.balanceOf(address(this));
-        if (c >= diff) {
-            currency.transfer(_to, diff);
-            return;
+        require(diff == 0, "invalid withdraw");
+    }
+
+    /// @dev withdraw amount to an address.
+    ///
+    /// @param _money the erc20 which will be transfered
+    /// @param _amount the expected transfer amount
+    /// @param _to the address which erc20 will be transfered to
+    function _withdraw(
+        IERC20 _money,
+        uint256 _amount,
+        address _to
+    ) internal returns (uint256) {
+        uint256 balance = _money.balanceOf(address(this));
+        if (balance == 0) return _amount;
+        if (_amount <= balance) {
+            _money.transfer(_to, _amount);
+            return 0;
         } else {
-            currency.transfer(_to, c);
-            Vault.Data storage _vault = _vaults.last();
-            (uint256 _withdrawAmount, uint256 _decreasedValue) = _vault
-                .withdraw(_to, diff.sub(c));
+            _money.transfer(_to, balance);
+            return _amount.sub(balance);
+        }
+    }
+
+    /// @dev unstake token from transmuter to an address.
+    ///
+    /// @param _amount the expected transfer amount
+    /// @param _to the address which erc20 will be transfered to
+    function _unstakeTokenFromTransmuter(uint256 _amount, address _to)
+        internal
+        returns (uint256)
+    {
+        uint256 balance = transmuter.depositedNTokens(address(this));
+        if (balance == 0) return _amount;
+        if (_amount <= balance) {
+            transmuter.unstake(_amount);
+            token.transfer(_to, _amount);
+            return 0;
+        } else {
+            transmuter.unstake(balance);
+            token.transfer(_to, balance);
+            return _amount.sub(balance);
+        }
+    }
+
+    /// @dev withdraw currency from vault to an address.
+    ///
+    /// @param _amount the expected transfer amount
+    /// @param _to the address which erc20 will be transfered to
+    function _withdrawCurrencyFromVault(uint256 _amount, address _to)
+        internal
+        returns (uint256)
+    {
+        if (_vaults.length() == 0) return _amount;
+        Vault.Data storage _vault = _vaults.last();
+        uint256 balance = _vault.totalDeposited;
+        if (balance == 0) return _amount;
+        if (_amount <= balance) {
+            _vault.withdraw(_to, _amount);
+            return 0;
+        } else {
+            _vault.withdraw(_to, balance);
+            return _amount.sub(balance);
         }
     }
 }
