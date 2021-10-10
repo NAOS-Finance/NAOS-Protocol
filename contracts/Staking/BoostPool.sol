@@ -52,9 +52,9 @@ contract BoostPool is ReentrancyGuard {
 
     event PenaltyPercentUpdated(uint256 percent);
 
-    event TokensDeposited(address indexed user, uint256 amount);
+    event TokensDeposited(address indexed user, uint256 amount, uint256 weightedAmount);
 
-    event TokensWithdrawn(address indexed user, uint256 amount);
+    event TokensWithdrawn(address indexed user, uint256 amount, uint256 weightedAmount);
 
     event TokensClaimed(address indexed user, uint256 amount);
 
@@ -567,7 +567,7 @@ contract BoostPool is ReentrancyGuard {
 
         _pool.token.transferFrom(msg.sender, address(this), _depositAmount);
 
-        emit TokensDeposited(msg.sender, _depositAmount);
+        emit TokensDeposited(msg.sender, _depositAmount, _depositAmount.mul(lockTimeWeight.weighted));
     }
 
     /// @dev Withdraws staked tokens from a pool.
@@ -593,7 +593,7 @@ contract BoostPool is ReentrancyGuard {
 
         _pool.token.transfer(msg.sender, _withdrawAmount);
 
-        emit TokensWithdrawn(msg.sender, _withdrawAmount);
+        emit TokensWithdrawn(msg.sender, _withdrawAmount, _weightedWithdrawAmount);
     }
 
     /// @dev Claims all rewarded tokens from a pool.
