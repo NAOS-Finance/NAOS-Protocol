@@ -322,21 +322,6 @@ describe("Beta Insurance Token", () => {
                     expect(await betaInsurance.balance()).equal(AliceDepositedAmount.mul(2).add(BobDepositedAmount));
                 });
             });
-
-            context("another user deposits all tokens", () => {
-                beforeEach(async () => {
-                    await betaInsurance.connect(Bob).depositAll();
-                });
-
-                it("it checks user get the beta token and insurance pool get the tokens", async () => {
-                    expect(await token.balanceOf(betaInsurance.address)).equal(AliceDepositedAmount.add(mintAmount));
-                    expect(await token.balanceOf(Bob.getAddress())).equal(0);
-
-                    expect(await betaInsurance.balanceOf(Bob.getAddress())).equal(mintAmount);
-                    expect(await betaInsurance.totalSupply()).equal(AliceDepositedAmount.add(mintAmount));
-                    expect(await betaInsurance.balance()).equal(AliceDepositedAmount.add(mintAmount));
-                });
-            });
         });
 
         context("user withdraw amount", () => {
@@ -391,20 +376,6 @@ describe("Beta Insurance Token", () => {
                         expect(await betaInsurance.balanceOf(Alice.getAddress())).equal(0);
                         expect(await betaInsurance.totalSupply()).equal(BobDepositedAmount.sub(AliceDepositedAmount));
                         expect(await betaInsurance.balance()).equal(BobDepositedAmount.mul(2).sub(AliceDepositedAmount.mul(tokenPrice)));
-                    });
-                });
-
-                context("another user withdraws all tokens", () => {
-                    beforeEach(async () => {
-                        await betaInsurance.connect(Alice).withdrawAll();
-                    });
-
-                    it("it checks user get the token and burn the betatokens", async () => {
-                        expect(await token.balanceOf(betaInsurance.address)).equal(BobDepositedAmount.sub(AliceDepositedAmount));
-                        expect(await token.balanceOf(Alice.getAddress())).equal(mintAmount);
-                        expect(await betaInsurance.balanceOf(Alice.getAddress())).equal(0);
-                        expect(await betaInsurance.totalSupply()).equal(BobDepositedAmount.sub(AliceDepositedAmount));
-                        expect(await betaInsurance.balance()).equal(BobDepositedAmount.sub(AliceDepositedAmount));
                     });
                 });
             });
@@ -544,7 +515,7 @@ describe("Beta Insurance Token", () => {
             await betaInsurance.connect(Bob).deposit(BobDepositedAmount);
         });
 
-        context("isser applys for insurance policy", () => {
+        context("issuer applys for insurance policy", () => {
             beforeEach(async () => {
                 await betaInsurance.connect(Peter).issue(ZERO_ADDRESS, 0, validPeriod, AliceDepositedAmount);
             });

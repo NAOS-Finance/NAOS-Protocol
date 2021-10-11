@@ -162,6 +162,31 @@ contract BetaInsurance is ERC20Upgradeable {
         _;
     }
 
+    modifier beforePaymentCheck(uint256 _insuranceID) {
+        require(
+            _insuranceID < insurancePolicyList.length,
+            "invalid insurance index"
+        );
+
+        InsurancePolicy memory insurancePolicy = insurancePolicyList[
+            _insuranceID
+        ];
+
+        require(
+            insurancePolicy.premiumIsSet,
+            "The insurance premium didn't set"
+        );
+        require(
+            !insurancePolicy.isValid,
+            "The insurance policy has been effective"
+        );
+        require(
+            balance().sub(lockAmount) >= insurancePolicy.insuranceAmount,
+            "no enough insurance quota"
+        );
+        _;
+    }
+
     function initialize(
         IERC20 _token,
         IERC20 _currency,
@@ -267,11 +292,6 @@ contract BetaInsurance is ERC20Upgradeable {
         emit StakingPoolUpdated(_stakingPool, _poolId);
     }
 
-    /// @dev despoit user's all tokens into pool
-    function depositAll() external {
-        deposit(token.balanceOf(msg.sender));
-    }
-
     /// @dev deposit tokens and get Beta tokens
     ///
     /// @param _amount The amount which will be deposited into the pool
@@ -288,11 +308,6 @@ contract BetaInsurance is ERC20Upgradeable {
         _mint(msg.sender, shares);
 
         emit TokenDeposited(msg.sender, _amount, shares);
-    }
-
-    /// @dev burn all the beta tokens and withdraw deposited shares which include tokens and currency
-    function withdrawAll() external {
-        withdraw(balanceOf(msg.sender));
     }
 
     /// @dev Burns beta tokens and withdraw deposited shares. If these is no enough tokens in the pool, it will pay  1:1 currency for user.
@@ -605,27 +620,10 @@ contract BetaInsurance is ERC20Upgradeable {
     function payPremiumByCurrency(
         uint256 _insuranceID,
         uint256 _naosAmountOutMin
-    ) external {
-        require(
-            _insuranceID < insurancePolicyList.length,
-            "invalid insurance index"
-        );
-
+    ) external beforePaymentCheck(_insuranceID) {
         InsurancePolicy storage insurancePolicy = insurancePolicyList[
             _insuranceID
         ];
-        require(
-            insurancePolicy.premiumIsSet,
-            "The insurance premium didn't set"
-        );
-        require(
-            !insurancePolicy.isValid,
-            "The insurance policy has been effective"
-        );
-        require(
-            balance().sub(lockAmount) >= insurancePolicy.insuranceAmount,
-            "no enough insurance quota"
-        );
 
         currency.transferFrom(
             msg.sender,
@@ -664,52 +662,20 @@ contract BetaInsurance is ERC20Upgradeable {
             naosAmountOut >= _naosAmountOutMin,
             "swap amount is lower than expected"
         );
-        insurancePolicy.isValid = true;
-        insurancePolicy.isLock = true;
-        insurancePolicy.expiredTime = block.timestamp.add(
-            insurancePolicy.validPeriod
-        );
-        lockAmount = lockAmount.add(insurancePolicy.insuranceAmount);
-        premiumNAOSDistributionList.push(
-            PremiumNAOSDistribution({
-                insuranceID: _insuranceID,
-                NAOSAmount: naosAmountOut,
-                start: block.timestamp,
-                end: insurancePolicy.expiredTime,
-                lastDistributedTimestamp: block.timestamp
-            })
-        );
 
-        emit insurancePolicyUpdated(_insuranceID);
-        emit premiumNAOSDistributionListUpdated(
-            premiumNAOSDistributionList.length - 1
-        );
+        _setupPayment(insurancePolicy, _insuranceID, naosAmountOut);
     }
 
     /// @dev Pay the insurance premium by NAOS. The NAOS will distributed to staker linearly.
     ///
     /// @param _insuranceID the insurance ID.
-    function payPremiumByNAOS(uint256 _insuranceID) external {
-        require(
-            _insuranceID < insurancePolicyList.length,
-            "invalid insurance index"
-        );
-
+    function payPremiumByNAOS(uint256 _insuranceID)
+        external
+        beforePaymentCheck(_insuranceID)
+    {
         InsurancePolicy storage insurancePolicy = insurancePolicyList[
             _insuranceID
         ];
-        require(
-            insurancePolicy.premiumIsSet,
-            "The insurance premium didn't set"
-        );
-        require(
-            !insurancePolicy.isValid,
-            "The insurance policy has been effective"
-        );
-        require(
-            balance().sub(lockAmount) >= insurancePolicy.insuranceAmount,
-            "no enough insurance quota"
-        );
 
         naos.transferFrom(
             msg.sender,
@@ -717,25 +683,10 @@ contract BetaInsurance is ERC20Upgradeable {
             insurancePolicy.premiumNAOSAmount
         );
 
-        insurancePolicy.isValid = true;
-        insurancePolicy.isLock = true;
-        insurancePolicy.expiredTime = block.timestamp.add(
-            insurancePolicy.validPeriod
-        );
-        lockAmount = lockAmount.add(insurancePolicy.insuranceAmount);
-        premiumNAOSDistributionList.push(
-            PremiumNAOSDistribution({
-                insuranceID: _insuranceID,
-                NAOSAmount: insurancePolicy.premiumNAOSAmount,
-                start: block.timestamp,
-                end: insurancePolicy.expiredTime,
-                lastDistributedTimestamp: block.timestamp
-            })
-        );
-
-        emit insurancePolicyUpdated(_insuranceID);
-        emit premiumNAOSDistributionListUpdated(
-            premiumNAOSDistributionList.length - 1
+        _setupPayment(
+            insurancePolicy,
+            _insuranceID,
+            insurancePolicy.premiumNAOSAmount
         );
     }
 
@@ -841,6 +792,33 @@ contract BetaInsurance is ERC20Upgradeable {
         }
         naos.approve(address(stakingPool), donateAmount);
         stakingPool.donateReward(poolId, donateAmount);
+    }
+
+    function _setupPayment(
+        InsurancePolicy storage _insurancePolicy,
+        uint256 _insuranceID,
+        uint256 _paymentNAOSAmount
+    ) internal {
+        _insurancePolicy.isValid = true;
+        _insurancePolicy.isLock = true;
+        _insurancePolicy.expiredTime = block.timestamp.add(
+            _insurancePolicy.validPeriod
+        );
+        lockAmount = lockAmount.add(_insurancePolicy.insuranceAmount);
+        premiumNAOSDistributionList.push(
+            PremiumNAOSDistribution({
+                insuranceID: _insuranceID,
+                NAOSAmount: _paymentNAOSAmount,
+                start: block.timestamp,
+                end: _insurancePolicy.expiredTime,
+                lastDistributedTimestamp: block.timestamp
+            })
+        );
+
+        emit insurancePolicyUpdated(_insuranceID);
+        emit premiumNAOSDistributionListUpdated(
+            premiumNAOSDistributionList.length - 1
+        );
     }
 
     /// @dev get the number of insurance policy
