@@ -8,6 +8,7 @@
   "scripts": {
     "compile": "npx hardhat compile",
     "test": "npx hardhat --network ganache test",
+    "test_local": "npx hardhat --network localhost test",
     "prettier": "prettier --write 'contracts/**/*.sol'"
   },
   "devDependencies": {
