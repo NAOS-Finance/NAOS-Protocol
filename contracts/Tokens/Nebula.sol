@@ -11,8 +11,7 @@ contract Nebula is ERC721, Ownable {
     using Counters for Counters.Counter;
     Counters.Counter private _tokenIds;
 
-    constructor() public ERC721("Nebula", "NAOS") {
-    }
+    constructor() public ERC721("Nebula", "NAOS") {}
 
     function safeMint(address to, string memory tokenURI) public onlyOwner {
         uint256 tokenId = _tokenIds.current();
@@ -22,8 +21,7 @@ contract Nebula is ERC721, Ownable {
     }
 
     function burn(uint256 tokenId) public onlyOwner {
-        require(_exists(tokenId), 'token does not exist');
+        require(_exists(tokenId), "token does not exist");
         _burn(tokenId);
     }
 }
-

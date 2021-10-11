@@ -150,10 +150,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
 
     /// @dev Check that the epoch has been updated.
     modifier onlyUpdated() {
-        require(
-            epochTicker.currentEpoch() == currentEpoch && epochUpdated,
-            "Wait for epoch updated"
-        );
+        require(epochTicker.currentEpoch() == currentEpoch && epochUpdated, "Wait for epoch updated");
         _;
     }
 
@@ -179,10 +176,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
 
     event TokensClaimed(address indexed user, uint256 amount);
 
-    event DepositedOrderRedeemUpdated(
-        uint256 depositedOrderIndex,
-        uint256 RedeemOrderListindex
-    );
+    event DepositedOrderRedeemUpdated(uint256 depositedOrderIndex, uint256 RedeemOrderListindex);
 
     function initialize(
         IERC20 _currency,
@@ -217,10 +211,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     ///
     /// @param _pendingGovernance the new pending governance.
     function setPendingGovernance(address _pendingGovernance) external onlyGov {
-        require(
-            _pendingGovernance != ZERO_ADDRESS,
-            "GalaxyStakingPools: governance address cannot be 0x0."
-        );
+        require(_pendingGovernance != ZERO_ADDRESS, "GalaxyStakingPools: governance address cannot be 0x0.");
 
         pendingGovernance = _pendingGovernance;
 
@@ -231,10 +222,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     ///
     /// This function reverts if the caller is not the new pending governance.
     function acceptGovernance() external {
-        require(
-            msg.sender == pendingGovernance,
-            "GalaxyStakingPools: !pendingGovernance"
-        );
+        require(msg.sender == pendingGovernance, "GalaxyStakingPools: !pendingGovernance");
 
         governance = pendingGovernance;
 
@@ -278,14 +266,8 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     /// This will update all of the pools.
     ///
     /// @param _rewardWeights The reward weights of all of the pools.
-    function setRewardWeights(uint256[] calldata _rewardWeights)
-        external
-        onlyGov
-    {
-        require(
-            _rewardWeights.length == _pools.length(),
-            "GalaxyStakingPools: weights length mismatch"
-        );
+    function setRewardWeights(uint256[] calldata _rewardWeights) external onlyGov {
+        require(_rewardWeights.length == _pools.length(), "GalaxyStakingPools: weights length mismatch");
 
         _updatePools();
         uint256 _totalRewardWeight = _ctx.totalRewardWeight;
@@ -295,9 +277,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
             if (_currentRewardWeight == _rewardWeights[_poolId]) {
                 continue;
             }
-            _totalRewardWeight = _totalRewardWeight
-                .sub(_currentRewardWeight)
-                .add(_rewardWeights[_poolId]);
+            _totalRewardWeight = _totalRewardWeight.sub(_currentRewardWeight).add(_rewardWeights[_poolId]);
             _pool.rewardWeight = _rewardWeights[_poolId];
 
             emit PoolRewardWeightUpdated(_poolId, _rewardWeights[_poolId]);
@@ -308,10 +288,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     /// @dev set deposited ceiling
     ///
     /// @param _amount The new deposited ceiling
-    function setDepositedCeiling(uint256 _poolId, uint256 _amount)
-        external
-        onlyGov
-    {
+    function setDepositedCeiling(uint256 _poolId, uint256 _amount) external onlyGov {
         Pool.Data storage _pool = _pools.get(_poolId);
         _pool.update(_ctx);
 
@@ -327,28 +304,11 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     /// @param _expiredTimestamp The minimum staking time of the pool
     ///
     /// @return the identifier for the newly created pool.
-    function createPool(uint256 _expiredTimestamp)
-        external
-        onlyGov
-        returns (uint256)
-    {
-        require(
-            _expiredTimestamp > 0,
-            "GalaxyStakingPools: timestamp should greater than 0"
-        );
+    function createPool(uint256 _expiredTimestamp) external onlyGov returns (uint256) {
+        require(_expiredTimestamp > 0, "GalaxyStakingPools: timestamp should greater than 0");
 
         uint256 _poolId = _pools.length();
-        _pools.push(
-            Pool.Data({
-                totalDeposited: 0,
-                totalDepositedWeight: 0,
-                ceiling: 0,
-                rewardWeight: 0,
-                accumulatedRewardWeight: FixedPointMath.uq192x64(0),
-                lastUpdatedBlock: block.number,
-                expiredTimestamp: _expiredTimestamp
-            })
-        );
+        _pools.push(Pool.Data({totalDeposited: 0, totalDepositedWeight: 0, ceiling: 0, rewardWeight: 0, accumulatedRewardWeight: FixedPointMath.uq192x64(0), lastUpdatedBlock: block.number, expiredTimestamp: _expiredTimestamp}));
 
         emit PoolCreated(_poolId, _expiredTimestamp);
 
@@ -359,22 +319,14 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     ///
     /// @param _poolId pool id
     /// @param _amount deposit amount
-    function deposit(uint256 _poolId, uint256 _amount)
-        external
-        onlyWhitelist
-        onlyUpdated
-        nonReentrant
-    {
+    function deposit(uint256 _poolId, uint256 _amount) external onlyWhitelist onlyUpdated nonReentrant {
         require(_amount > 0, "supply amount should be greater than 0");
         require(_poolId < _pools.length(), "invalid pool id");
 
         Pool.Data storage _pool = _pools.get(_poolId);
         _pool.update(_ctx);
 
-        require(
-            _pool.totalDeposited.add(_amount) <= _pool.ceiling,
-            "exceed deposited ceiling"
-        );
+        require(_pool.totalDeposited.add(_amount) <= _pool.ceiling, "exceed deposited ceiling");
 
         Stake.Data storage _stake = _stakes[msg.sender][_poolId];
         _stake.update(_pool, _ctx);
@@ -400,54 +352,33 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     ///
     /// @param _poolId pool id
     /// @param _index deposited order index which will be redeemed
-    function redeem(uint256 _poolId, uint256[] calldata _index)
-        external
-        onlyUpdated
-        nonReentrant
-    {
+    function redeem(uint256 _poolId, uint256[] calldata _index) external onlyUpdated nonReentrant {
         Pool.Data storage _pool = _pools.get(_poolId);
         _pool.update(_ctx);
 
         Stake.Data storage _stake = _stakes[msg.sender][_poolId];
         _stake.update(_pool, _ctx);
 
-        _updateWeighted(
-            _pool,
-            _stake,
-            boostPool.getPoolTotalDepositedWeight(),
-            boostPool.getStakeTotalDepositedWeight(msg.sender)
-        );
+        _updateWeighted(_pool, _stake, boostPool.getPoolTotalDepositedWeight(), boostPool.getStakeTotalDepositedWeight(msg.sender));
 
         require(_index.length <= depositedOrderCount, "invalid index");
         for (uint256 i = 0; i < _index.length; i++) {
-            DepositedOrder storage depositedOrder = depositedOrderList[
-                _index[i]
-            ];
+            DepositedOrder storage depositedOrder = depositedOrderList[_index[i]];
             require(_index[i] < depositedOrderCount, "invalid index");
             require(!depositedOrder.isRedeem, "The order has been redeemed");
             require(depositedOrder.owner == msg.sender, "invalid owner");
-            require(
-                depositedOrder.expiredTime < block.timestamp,
-                "The lock time is not expired!"
-            );
+            require(depositedOrder.expiredTime < block.timestamp, "The lock time is not expired!");
             require(depositedOrder.poolId == _poolId, "inconsistent pool id");
 
             depositedOrder.isRedeem = true;
-            depositedOrder.redeemToken = depositedOrder
-                .amount
-                .mul(pointMultiplier)
-                .div(epochTokenPrice[depositedOrder.epoch]);
+            depositedOrder.redeemToken = depositedOrder.amount.mul(pointMultiplier).div(epochTokenPrice[depositedOrder.epoch]);
             depositedOrder.remainingRedeemToken = depositedOrder.redeemToken;
-            userRemainingRedeemToken[msg.sender] = userRemainingRedeemToken[
-                msg.sender
-            ].add(depositedOrder.redeemToken);
+            userRemainingRedeemToken[msg.sender] = userRemainingRedeemToken[msg.sender].add(depositedOrder.redeemToken);
 
             redeemOrderList[redeemOrderCount] = _index[i];
             redeemOrderCount = redeemOrderCount + 1;
 
-            totalRedeemTokenAmount = totalRedeemTokenAmount.add(
-                depositedOrder.redeemToken
-            );
+            totalRedeemTokenAmount = totalRedeemTokenAmount.add(depositedOrder.redeemToken);
             emit DepositedOrderRedeemUpdated(_index[i], redeemOrderCount - 1);
         }
 
@@ -484,22 +415,13 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     /// @dev After Galaxy epoch closes, this function is called to update the epoch.
     function updateEpoch() external nonReentrant {
         if (epochUpdated) {
-            (
-                uint256 payoutCurrencyAmount,
-                uint256 payoutTokenAmount,
-                uint256 remainingSupplyCurrency,
-                uint256 remainingRedeemToken
-            ) = operator.disburse();
+            (uint256 payoutCurrencyAmount, uint256 payoutTokenAmount, uint256 remainingSupplyCurrency, uint256 remainingRedeemToken) = operator.disburse();
             uint256 newEpoch = epochTicker.currentEpoch();
             require(newEpoch != currentEpoch, "epoch has been updated");
 
-            epochTokenPrice[newEpoch - 1] = tranche.getTokenPriceByEpoch(
-                newEpoch - 1
-            );
+            epochTokenPrice[newEpoch - 1] = tranche.getTokenPriceByEpoch(newEpoch - 1);
             currentEpoch = newEpoch;
-            remainingRedeemTokenAmount = totalRedeemTokenAmount.sub(
-                remainingRedeemToken
-            );
+            remainingRedeemTokenAmount = totalRedeemTokenAmount.sub(remainingRedeemToken);
             remainingPayoutCurrencyAmount = payoutCurrencyAmount;
             totalRedeemTokenAmount = remainingRedeemToken;
             totalSupplyCurrency = 0;
@@ -517,66 +439,35 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
         _updatePools();
 
         for (uint256 i = redeemOrderListPendingIndex; i < end; i++) {
-            DepositedOrder storage order = depositedOrderList[
-                redeemOrderList[i]
-            ];
-            uint256 userTotalDeposited = boostPool.getStakeTotalDepositedWeight(
-                order.owner
-            );
+            DepositedOrder storage order = depositedOrderList[redeemOrderList[i]];
+            uint256 userTotalDeposited = boostPool.getStakeTotalDepositedWeight(order.owner);
             if (order.remainingRedeemToken >= remainingRedeemTokenAmount) {
                 redeemTokenAmount = remainingRedeemTokenAmount;
                 payoutCurrencyAmount = remainingPayoutCurrencyAmount;
             } else {
                 redeemTokenAmount = order.remainingRedeemToken;
-                payoutCurrencyAmount = order
-                    .remainingRedeemToken
-                    .mul(epochTokenPrice[currentEpoch - 1])
-                    .div(pointMultiplier);
+                payoutCurrencyAmount = order.remainingRedeemToken.mul(epochTokenPrice[currentEpoch - 1]).div(pointMultiplier);
             }
             if (order.remainingRedeemToken <= remainingRedeemTokenAmount) {
                 redeemOrderListPendingIndex = redeemOrderListPendingIndex + 1;
             }
-            userRemainingRedeemToken[order.owner] = userRemainingRedeemToken[
-                order.owner
-            ].sub(redeemTokenAmount);
-            userUnclaimedCurrency[order.owner] = userUnclaimedCurrency[
-                order.owner
-            ].add(payoutCurrencyAmount);
-            order.remainingRedeemToken = order.remainingRedeemToken.sub(
-                redeemTokenAmount
-            );
+            userRemainingRedeemToken[order.owner] = userRemainingRedeemToken[order.owner].sub(redeemTokenAmount);
+            userUnclaimedCurrency[order.owner] = userUnclaimedCurrency[order.owner].add(payoutCurrencyAmount);
+            order.remainingRedeemToken = order.remainingRedeemToken.sub(redeemTokenAmount);
             if (order.redeemedCurrency >= order.amount) {
                 reduceDepositedAmount = 0;
             } else {
-                if (
-                    order.redeemedCurrency.add(payoutCurrencyAmount) >=
-                    order.amount ||
-                    order.remainingRedeemToken == 0
-                ) {
-                    reduceDepositedAmount = order.amount.sub(
-                        order.redeemedCurrency
-                    );
+                if (order.redeemedCurrency.add(payoutCurrencyAmount) >= order.amount || order.remainingRedeemToken == 0) {
+                    reduceDepositedAmount = order.amount.sub(order.redeemedCurrency);
                 } else {
                     reduceDepositedAmount = payoutCurrencyAmount;
                 }
             }
-            order.redeemedCurrency = order.redeemedCurrency.add(
-                payoutCurrencyAmount
-            );
+            order.redeemedCurrency = order.redeemedCurrency.add(payoutCurrencyAmount);
 
-            _transmute(
-                order.poolId,
-                order.owner,
-                reduceDepositedAmount,
-                poolTotalDeposited,
-                userTotalDeposited
-            );
-            remainingRedeemTokenAmount = remainingRedeemTokenAmount.sub(
-                redeemTokenAmount
-            );
-            remainingPayoutCurrencyAmount = remainingPayoutCurrencyAmount.sub(
-                payoutCurrencyAmount
-            );
+            _transmute(order.poolId, order.owner, reduceDepositedAmount, poolTotalDeposited, userTotalDeposited);
+            remainingRedeemTokenAmount = remainingRedeemTokenAmount.sub(redeemTokenAmount);
+            remainingPayoutCurrencyAmount = remainingPayoutCurrencyAmount.sub(payoutCurrencyAmount);
 
             emit DepositedOrderRedeemUpdated(redeemOrderList[i], i);
 
@@ -597,37 +488,22 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     ///
     /// @param _poolId The pool to update boost for.
     /// @param _account The address to update boost for.
-    function activateBoost(uint256 _poolId, address _account)
-        external
-        onlyUpdated
-        nonReentrant
-    {
+    function activateBoost(uint256 _poolId, address _account) external onlyUpdated nonReentrant {
         Pool.Data storage _pool = _pools.get(_poolId);
         _pool.update(_ctx);
 
         Stake.Data storage _stake = _stakes[_account][_poolId];
         _stake.update(_pool, _ctx);
 
-        _updateWeighted(
-            _pool,
-            _stake,
-            boostPool.getPoolTotalDepositedWeight(),
-            boostPool.getStakeTotalDepositedWeight(_account)
-        );
+        _updateWeighted(_pool, _stake, boostPool.getPoolTotalDepositedWeight(), boostPool.getStakeTotalDepositedWeight(_account));
     }
 
     /// @dev Update the boost of all pools of the account.
     ///
     /// @param _account The address to update boost for.
-    function activateBoosts(address _account)
-        external
-        onlyUpdated
-        nonReentrant
-    {
-        uint256 poolTotalDepositedWeight = boostPool
-            .getPoolTotalDepositedWeight();
-        uint256 userTotalDepositedWeight = boostPool
-            .getStakeTotalDepositedWeight(_account);
+    function activateBoosts(address _account) external onlyUpdated nonReentrant {
+        uint256 poolTotalDepositedWeight = boostPool.getPoolTotalDepositedWeight();
+        uint256 userTotalDepositedWeight = boostPool.getStakeTotalDepositedWeight(_account);
 
         for (uint256 _poolId = 0; _poolId < _pools.length(); _poolId++) {
             Pool.Data storage _pool = _pools.get(_poolId);
@@ -636,12 +512,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
             Stake.Data storage _stake = _stakes[_account][_poolId];
             _stake.update(_pool, _ctx);
 
-            _updateWeighted(
-                _pool,
-                _stake,
-                poolTotalDepositedWeight,
-                userTotalDepositedWeight
-            );
+            _updateWeighted(_pool, _stake, poolTotalDepositedWeight, userTotalDepositedWeight);
         }
     }
 
@@ -679,11 +550,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     /// @param _poolId the identifier of the pool.
     ///
     /// @return the total amount of staked or deposited tokens.
-    function getPoolTotalDeposited(uint256 _poolId)
-        external
-        view
-        returns (uint256)
-    {
+    function getPoolTotalDeposited(uint256 _poolId) external view returns (uint256) {
         Pool.Data storage _pool = _pools.get(_poolId);
         return _pool.totalDeposited;
     }
@@ -703,11 +570,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     /// @param _poolId the identifier of the pool.
     ///
     /// @return the pool reward weight.
-    function getPoolRewardWeight(uint256 _poolId)
-        external
-        view
-        returns (uint256)
-    {
+    function getPoolRewardWeight(uint256 _poolId) external view returns (uint256) {
         Pool.Data storage _pool = _pools.get(_poolId);
         return _pool.rewardWeight;
     }
@@ -717,11 +580,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     /// @param _poolId the identifier of the pool.
     ///
     /// @return the pool reward rate.
-    function getPoolRewardRate(uint256 _poolId)
-        external
-        view
-        returns (uint256)
-    {
+    function getPoolRewardRate(uint256 _poolId) external view returns (uint256) {
         Pool.Data storage _pool = _pools.get(_poolId);
         return _pool.getRewardRate(_ctx);
     }
@@ -731,11 +590,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     /// @param _poolId the identifier of the pool.
     ///
     /// @return the pool expire time.
-    function getPoolExpiredTimestamp(uint256 _poolId)
-        external
-        view
-        returns (uint256)
-    {
+    function getPoolExpiredTimestamp(uint256 _poolId) external view returns (uint256) {
         Pool.Data storage _pool = _pools.get(_poolId);
         return _pool.expiredTimestamp;
     }
@@ -745,11 +600,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     /// @param _poolId the identifier of the pool.
     ///
     /// @return the pool total boost weight.
-    function getPoolTotalDepositedWeight(uint256 _poolId)
-        external
-        view
-        returns (uint256)
-    {
+    function getPoolTotalDepositedWeight(uint256 _poolId) external view returns (uint256) {
         Pool.Data storage _pool = _pools.get(_poolId);
         return _pool.totalDepositedWeight;
     }
@@ -760,11 +611,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     /// @param _poolId  the identifier of the pool.
     ///
     /// @return the amount of deposited tokens.
-    function getStakeTotalDeposited(address _account, uint256 _poolId)
-        external
-        view
-        returns (uint256)
-    {
+    function getStakeTotalDeposited(address _account, uint256 _poolId) external view returns (uint256) {
         Stake.Data storage _stake = _stakes[_account][_poolId];
         return _stake.totalDeposited;
     }
@@ -775,11 +622,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     /// @param _poolId  The pool to check for unclaimed rewards.
     ///
     /// @return the amount of unclaimed reward tokens a user has in a pool.
-    function getStakeTotalUnclaimed(address _account, uint256 _poolId)
-        external
-        view
-        returns (uint256)
-    {
+    function getStakeTotalUnclaimed(address _account, uint256 _poolId) external view returns (uint256) {
         Stake.Data storage _stake = _stakes[_account][_poolId];
         return _stake.getUpdatedTotalUnclaimed(_pools.get(_poolId), _ctx);
     }
@@ -790,11 +633,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     /// @param _poolId  the identifier of the pool.
     ///
     /// @return the account's total boost weight.
-    function getStakeTotalDepositedWeight(address _account, uint256 _poolId)
-        external
-        view
-        returns (uint256)
-    {
+    function getStakeTotalDepositedWeight(address _account, uint256 _poolId) external view returns (uint256) {
         Stake.Data storage _stake = _stakes[_account][_poolId];
         return _stake.totalDepositedWeight;
     }
@@ -828,17 +667,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
         )
     {
         DepositedOrder memory order = depositedOrderList[_index];
-        return (
-            order.owner,
-            order.poolId,
-            order.amount,
-            order.expiredTime,
-            order.redeemToken,
-            order.remainingRedeemToken,
-            order.redeemedCurrency,
-            order.epoch,
-            order.isRedeem
-        );
+        return (order.owner, order.poolId, order.amount, order.expiredTime, order.redeemToken, order.remainingRedeemToken, order.redeemedCurrency, order.epoch, order.isRedeem);
     }
 
     /// @dev Get the user weight in the pool.
@@ -857,13 +686,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
     ) public view returns (uint256) {
         uint256 weighted = userDeposited.mul(40).div(100);
         if (boostPoolDepositedWeight > 0) {
-            weighted = weighted.add(
-                poolDeposited
-                    .mul(boostUserDepositedWeight)
-                    .div(boostPoolDepositedWeight)
-                    .mul(60)
-                    .div(100)
-            );
+            weighted = weighted.add(poolDeposited.mul(boostUserDepositedWeight).div(boostPoolDepositedWeight).mul(60).div(100));
             if (weighted >= userDeposited) {
                 weighted = userDeposited;
             }
@@ -883,12 +706,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
         _pool.totalDeposited = _pool.totalDeposited.add(_amount);
         _stake.totalDeposited = _stake.totalDeposited.add(_amount);
 
-        _updateWeighted(
-            _pool,
-            _stake,
-            boostPool.getPoolTotalDepositedWeight(),
-            boostPool.getStakeTotalDepositedWeight(msg.sender)
-        );
+        _updateWeighted(_pool, _stake, boostPool.getPoolTotalDepositedWeight(), boostPool.getStakeTotalDepositedWeight(msg.sender));
         currency.transferFrom(msg.sender, address(this), _amount);
 
         totalSupplyCurrency = totalSupplyCurrency.add(_amount);
@@ -909,12 +727,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
         uint256 _claimAmount = _stake.totalUnclaimed;
         _stake.totalUnclaimed = 0;
 
-        _updateWeighted(
-            _pool,
-            _stake,
-            boostPool.getPoolTotalDepositedWeight(),
-            boostPool.getStakeTotalDepositedWeight(msg.sender)
-        );
+        _updateWeighted(_pool, _stake, boostPool.getPoolTotalDepositedWeight(), boostPool.getStakeTotalDepositedWeight(msg.sender));
 
         token.transfer(msg.sender, _claimAmount);
 
@@ -943,12 +756,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
         _pool.totalDeposited = _pool.totalDeposited.sub(_amount);
         _stake.totalDeposited = _stake.totalDeposited.sub(_amount);
 
-        _updateWeighted(
-            _pool,
-            _stake,
-            _poolTotalDeposited,
-            _userTotalDeposited
-        );
+        _updateWeighted(_pool, _stake, _poolTotalDeposited, _userTotalDeposited);
     }
 
     /// @dev update user's deposit boost weight
@@ -963,17 +771,9 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
         uint256 boostPoolDepositedWeight,
         uint256 boostUserDepositedWeight
     ) internal {
-        uint256 weight = calcUserWeight(
-            _pool.totalDeposited,
-            _stake.totalDeposited,
-            boostPoolDepositedWeight,
-            boostUserDepositedWeight
-        );
+        uint256 weight = calcUserWeight(_pool.totalDeposited, _stake.totalDeposited, boostPoolDepositedWeight, boostUserDepositedWeight);
 
-        _pool.totalDepositedWeight = _pool
-            .totalDepositedWeight
-            .sub(_stake.totalDepositedWeight)
-            .add(weight);
+        _pool.totalDepositedWeight = _pool.totalDepositedWeight.sub(_stake.totalDepositedWeight).add(weight);
         _stake.totalDepositedWeight = weight;
     }
 }

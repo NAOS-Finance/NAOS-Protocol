@@ -20,17 +20,14 @@ library Pool {
     struct Context {
         uint256 rewardRate;
         uint256 totalRewardWeight;
-        // address orderBook;
     }
 
     struct Data {
+        IERC20 token;
         uint256 totalDeposited;
-        uint256 totalDepositedWeight;
-        uint256 ceiling;
         uint256 rewardWeight;
         FixedPointMath.uq192x64 accumulatedRewardWeight;
         uint256 lastUpdatedBlock;
-        uint256 expiredTimestamp;
     }
 
     struct List {
@@ -43,6 +40,14 @@ library Pool {
     function update(Data storage _data, Context storage _ctx) internal {
         _data.accumulatedRewardWeight = _data.getUpdatedAccumulatedRewardWeight(_ctx);
         _data.lastUpdatedBlock = block.number;
+    }
+
+    /// @dev distribute rewards to other users.
+    ///
+    /// @param _distributeAmount the amount will be distributed.
+    function distribute(Data storage _data, uint256 _distributeAmount) internal {
+        FixedPointMath.uq192x64 memory distributeAmount = FixedPointMath.fromU256(_distributeAmount).div(_data.totalDeposited);
+        _data.accumulatedRewardWeight = _data.accumulatedRewardWeight.add(distributeAmount);
     }
 
     /// @dev Gets the rate at which the pool will distribute rewards to stakers.
@@ -60,7 +65,7 @@ library Pool {
     ///
     /// @return the accumulated reward weight.
     function getUpdatedAccumulatedRewardWeight(Data storage _data, Context storage _ctx) internal view returns (FixedPointMath.uq192x64 memory) {
-        if (_data.totalDepositedWeight == 0) {
+        if (_data.totalDeposited == 0) {
             return _data.accumulatedRewardWeight;
         }
 
@@ -76,7 +81,7 @@ library Pool {
             return _data.accumulatedRewardWeight;
         }
 
-        FixedPointMath.uq192x64 memory _rewardWeight = FixedPointMath.fromU256(_distributeAmount).div(_data.totalDepositedWeight);
+        FixedPointMath.uq192x64 memory _rewardWeight = FixedPointMath.fromU256(_distributeAmount).div(_data.totalDeposited);
         return _data.accumulatedRewardWeight.add(_rewardWeight);
     }
 

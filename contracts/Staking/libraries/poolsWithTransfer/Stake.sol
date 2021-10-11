@@ -19,7 +19,6 @@ library Stake {
 
     struct Data {
         uint256 totalDeposited;
-        uint256 totalDepositedWeight;
         uint256 totalUnclaimed;
         FixedPointMath.uq192x64 lastAccumulatedWeight;
     }
@@ -45,7 +44,7 @@ library Stake {
             return _self.totalUnclaimed;
         }
 
-        uint256 _distributedAmount = _currentAccumulatedWeight.sub(_lastAccumulatedWeight).mul(_self.totalDepositedWeight).decode();
+        uint256 _distributedAmount = _currentAccumulatedWeight.sub(_lastAccumulatedWeight).mul(_self.totalDeposited).decode();
 
         return _self.totalUnclaimed.add(_distributedAmount);
     }
