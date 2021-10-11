@@ -663,7 +663,7 @@ contract BetaInsurance is ERC20Upgradeable {
             "swap amount is lower than expected"
         );
 
-        _setupPayment(insurancePolicy, _insuranceID, naosAmountOut);
+        _activateInsurance(insurancePolicy, _insuranceID, naosAmountOut);
     }
 
     /// @dev Pay the insurance premium by NAOS. The NAOS will distributed to staker linearly.
@@ -683,7 +683,7 @@ contract BetaInsurance is ERC20Upgradeable {
             insurancePolicy.premiumNAOSAmount
         );
 
-        _setupPayment(
+        _activateInsurance(
             insurancePolicy,
             _insuranceID,
             insurancePolicy.premiumNAOSAmount
@@ -794,7 +794,12 @@ contract BetaInsurance is ERC20Upgradeable {
         stakingPool.donateReward(poolId, donateAmount);
     }
 
-    function _setupPayment(
+    /// @dev activate insurance policy after user pays the premium.
+    ///
+    /// @param _insurancePolicy the insurance policy which will be active.
+    /// @param _insuranceID the insurance ID
+    /// @param _paymentNAOSAmount the premium NAOS amount
+    function _activateInsurance(
         InsurancePolicy storage _insurancePolicy,
         uint256 _insuranceID,
         uint256 _paymentNAOSAmount
