@@ -601,8 +601,10 @@ describe("Galaxy Staking Pools", () => {
       memberlist = await Memberlist.deploy();
       await alpha.depend(memberlistPadded, memberlist.address);
       await alpha.rely(tranche.address);
-      await memberlist.updateMember(galaxyStakingPools.address, Math.floor(new Date().getTime() / 1000 + 86400 * 10));
-      await memberlist.updateMember(tranche.address, Math.floor(new Date().getTime() / 1000 + 86400 * 10));
+      let blockNumber = await ethers.provider.getBlockNumber();
+      let block = await ethers.provider.getBlock(blockNumber);
+      await memberlist.updateMember(galaxyStakingPools.address, block.timestamp + 86400 * 10);
+      await memberlist.updateMember(tranche.address, block.timestamp + 86400 * 10);
       await currency.approve(tranche.address, MAXIMUM_U256);
       await currency.mint(await deployer.getAddress(), mintAmount);
       await tranche.rely(operator.address);
