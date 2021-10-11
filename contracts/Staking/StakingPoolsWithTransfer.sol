@@ -32,23 +32,11 @@ contract StakingPoolsWithTransfer is ReentrancyGuard {
 
     event PoolCreated(uint256 indexed poolId, IERC20 indexed token);
 
-    event TokensDeposited(
-        address indexed user,
-        uint256 indexed poolId,
-        uint256 amount
-    );
+    event TokensDeposited(address indexed user, uint256 indexed poolId, uint256 amount);
 
-    event TokensWithdrawn(
-        address indexed user,
-        uint256 indexed poolId,
-        uint256 amount
-    );
+    event TokensWithdrawn(address indexed user, uint256 indexed poolId, uint256 amount);
 
-    event TokensClaimed(
-        address indexed user,
-        uint256 indexed poolId,
-        uint256 amount
-    );
+    event TokensClaimed(address indexed user, uint256 indexed poolId, uint256 amount);
 
     /// @dev The token which will be minted as a reward for staking.
     IERC20 public reward;
@@ -72,14 +60,8 @@ contract StakingPoolsWithTransfer is ReentrancyGuard {
     mapping(address => mapping(uint256 => Stake.Data)) private _stakes;
 
     constructor(IERC20 _reward, address _governance) public {
-        require(
-            address(_reward) != address(0),
-            "StakingPools: reward address cannot be 0x0"
-        );
-        require(
-            _governance != address(0),
-            "StakingPools: governance address cannot be 0x0"
-        );
+        require(address(_reward) != address(0), "StakingPools: reward address cannot be 0x0");
+        require(_governance != address(0), "StakingPools: governance address cannot be 0x0");
 
         reward = _reward;
         governance = _governance;
@@ -96,24 +78,15 @@ contract StakingPoolsWithTransfer is ReentrancyGuard {
     /// This function can only called by the current governance.
     ///
     /// @param _pendingGovernance the new pending governance.
-    function setPendingGovernance(address _pendingGovernance)
-        external
-        onlyGovernance
-    {
-        require(
-            _pendingGovernance != address(0),
-            "StakingPools: pending governance address cannot be 0x0"
-        );
+    function setPendingGovernance(address _pendingGovernance) external onlyGovernance {
+        require(_pendingGovernance != address(0), "StakingPools: pending governance address cannot be 0x0");
         pendingGovernance = _pendingGovernance;
 
         emit PendingGovernanceUpdated(_pendingGovernance);
     }
 
     function acceptGovernance() external {
-        require(
-            msg.sender == pendingGovernance,
-            "StakingPools: only pending governance"
-        );
+        require(msg.sender == pendingGovernance, "StakingPools: only pending governance");
 
         governance = pendingGovernance;
 
@@ -140,31 +113,13 @@ contract StakingPoolsWithTransfer is ReentrancyGuard {
     /// @param _token The token the pool will accept for staking.
     ///
     /// @return the identifier for the newly created pool.
-    function createPool(IERC20 _token)
-        external
-        onlyGovernance
-        returns (uint256)
-    {
-        require(
-            address(_token) != address(0),
-            "StakingPools: token address cannot be 0x0"
-        );
-        require(
-            tokenPoolIds[_token] == 0,
-            "StakingPools: token already has a pool"
-        );
+    function createPool(IERC20 _token) external onlyGovernance returns (uint256) {
+        require(address(_token) != address(0), "StakingPools: token address cannot be 0x0");
+        require(tokenPoolIds[_token] == 0, "StakingPools: token already has a pool");
 
         uint256 _poolId = _pools.length();
 
-        _pools.push(
-            Pool.Data({
-                token: _token,
-                totalDeposited: 0,
-                rewardWeight: 0,
-                accumulatedRewardWeight: FixedPointMath.uq192x64(0),
-                lastUpdatedBlock: block.number
-            })
-        );
+        _pools.push(Pool.Data({token: _token, totalDeposited: 0, rewardWeight: 0, accumulatedRewardWeight: FixedPointMath.uq192x64(0), lastUpdatedBlock: block.number}));
 
         tokenPoolIds[_token] = _poolId + 1;
 
@@ -176,14 +131,8 @@ contract StakingPoolsWithTransfer is ReentrancyGuard {
     /// @dev Sets the reward weights of all of the pools.
     ///
     /// @param _rewardWeights The reward weights of all of the pools.
-    function setRewardWeights(uint256[] calldata _rewardWeights)
-        external
-        onlyGovernance
-    {
-        require(
-            _rewardWeights.length == _pools.length(),
-            "StakingPools: weights length mismatch"
-        );
+    function setRewardWeights(uint256[] calldata _rewardWeights) external onlyGovernance {
+        require(_rewardWeights.length == _pools.length(), "StakingPools: weights length mismatch");
 
         _updatePools();
 
@@ -196,9 +145,7 @@ contract StakingPoolsWithTransfer is ReentrancyGuard {
                 continue;
             }
 
-            _totalRewardWeight = _totalRewardWeight
-                .sub(_currentRewardWeight)
-                .add(_rewardWeights[_poolId]);
+            _totalRewardWeight = _totalRewardWeight.sub(_currentRewardWeight).add(_rewardWeights[_poolId]);
             _pool.rewardWeight = _rewardWeights[_poolId];
 
             emit PoolRewardWeightUpdated(_poolId, _rewardWeights[_poolId]);
@@ -211,10 +158,7 @@ contract StakingPoolsWithTransfer is ReentrancyGuard {
     ///
     /// @param _poolId        the pool to deposit tokens into.
     /// @param _depositAmount the amount of tokens to deposit.
-    function deposit(uint256 _poolId, uint256 _depositAmount)
-        external
-        nonReentrant
-    {
+    function deposit(uint256 _poolId, uint256 _depositAmount) external nonReentrant {
         Pool.Data storage _pool = _pools.get(_poolId);
         _pool.update(_ctx);
 
@@ -228,10 +172,7 @@ contract StakingPoolsWithTransfer is ReentrancyGuard {
     ///
     /// @param _poolId          The pool to withdraw staked tokens from.
     /// @param _withdrawAmount  The number of tokens to withdraw.
-    function withdraw(uint256 _poolId, uint256 _withdrawAmount)
-        external
-        nonReentrant
-    {
+    function withdraw(uint256 _poolId, uint256 _withdrawAmount) external nonReentrant {
         Pool.Data storage _pool = _pools.get(_poolId);
         _pool.update(_ctx);
 
@@ -319,11 +260,7 @@ contract StakingPoolsWithTransfer is ReentrancyGuard {
     /// @param _poolId the identifier of the pool.
     ///
     /// @return the total amount of staked or deposited tokens.
-    function getPoolTotalDeposited(uint256 _poolId)
-        external
-        view
-        returns (uint256)
-    {
+    function getPoolTotalDeposited(uint256 _poolId) external view returns (uint256) {
         Pool.Data storage _pool = _pools.get(_poolId);
         return _pool.totalDeposited;
     }
@@ -333,11 +270,7 @@ contract StakingPoolsWithTransfer is ReentrancyGuard {
     /// @param _poolId the identifier of the pool.
     ///
     /// @return the pool reward weight.
-    function getPoolRewardWeight(uint256 _poolId)
-        external
-        view
-        returns (uint256)
-    {
+    function getPoolRewardWeight(uint256 _poolId) external view returns (uint256) {
         Pool.Data storage _pool = _pools.get(_poolId);
         return _pool.rewardWeight;
     }
@@ -347,11 +280,7 @@ contract StakingPoolsWithTransfer is ReentrancyGuard {
     /// @param _poolId the identifier of the pool.
     ///
     /// @return the pool reward rate.
-    function getPoolRewardRate(uint256 _poolId)
-        external
-        view
-        returns (uint256)
-    {
+    function getPoolRewardRate(uint256 _poolId) external view returns (uint256) {
         Pool.Data storage _pool = _pools.get(_poolId);
         return _pool.getRewardRate(_ctx);
     }
@@ -362,11 +291,7 @@ contract StakingPoolsWithTransfer is ReentrancyGuard {
     /// @param _poolId  the identifier of the pool.
     ///
     /// @return the amount of deposited tokens.
-    function getStakeTotalDeposited(address _account, uint256 _poolId)
-        external
-        view
-        returns (uint256)
-    {
+    function getStakeTotalDeposited(address _account, uint256 _poolId) external view returns (uint256) {
         Stake.Data storage _stake = _stakes[_account][_poolId];
         return _stake.totalDeposited;
     }
@@ -377,11 +302,7 @@ contract StakingPoolsWithTransfer is ReentrancyGuard {
     /// @param _poolId  The pool to check for unclaimed rewards.
     ///
     /// @return the amount of unclaimed reward tokens a user has in a pool.
-    function getStakeTotalUnclaimed(address _account, uint256 _poolId)
-        external
-        view
-        returns (uint256)
-    {
+    function getStakeTotalUnclaimed(address _account, uint256 _poolId) external view returns (uint256) {
         Stake.Data storage _stake = _stakes[_account][_poolId];
         return _stake.getUpdatedTotalUnclaimed(_pools.get(_poolId), _ctx);
     }

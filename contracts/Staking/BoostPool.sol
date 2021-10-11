@@ -23,9 +23,15 @@ contract BoostPool is ReentrancyGuard {
     using SafeMath for uint256;
     using Stake for Stake.Data;
 
+    struct LockTimeWeighted {
+        uint256 lockTime;
+        uint256 weighted;
+    }
+
     struct UserDepositedOrder {
         uint256 amount;
-        uint256 depositedTime;
+        uint256 expiredTime;
+        uint256 weighted;
         bool isWithdraw;
     }
 
@@ -40,13 +46,15 @@ contract BoostPool is ReentrancyGuard {
 
     event RewardRateUpdated(uint256 rewardRate);
 
+    event LockTimeWeightedSet(uint256 lockTime, uint256 weighted);
+
     event CooldownPeriodUpdated(uint256 period);
 
     event PenaltyPercentUpdated(uint256 percent);
 
-    event TokensDeposited(address indexed user, uint256 amount);
+    event TokensDeposited(address indexed user, uint256 amount, uint256 weightedAmount);
 
-    event TokensWithdrawn(address indexed user, uint256 amount);
+    event TokensWithdrawn(address indexed user, uint256 amount, uint256 weightedAmount);
 
     event TokensClaimed(address indexed user, uint256 amount);
 
@@ -61,9 +69,6 @@ contract BoostPool is ReentrancyGuard {
     /// @dev The address which is the candidate of governance
     address public pendingGovernance;
 
-    /// @dev The token lock time
-    uint256 public constant LOCK_TIME = 86400 * 90;
-
     /// @dev The claim period after cooldown period is expired
     uint256 public constant CLAIM_PERIOD = 86400;
 
@@ -75,6 +80,9 @@ contract BoostPool is ReentrancyGuard {
 
     /// @dev The percent of reward will be distributed to the pool if user claims reward immediately.
     uint256 public penaltyPercent;
+
+    /// @dev The weight in the pool of different lock time
+    LockTimeWeighted[] lockTimeWeightedList;
 
     /// @dev The count of user's deposited orders.
     mapping(address => uint256) public userOrderCount;
@@ -107,7 +115,7 @@ contract BoostPool is ReentrancyGuard {
 
         reward = _reward;
         governance = _governance;
-        cooldownPeriod = 86400 * 5;
+        cooldownPeriod = 86400 * 7;
         penaltyPercent = 50;
     }
 
@@ -149,6 +157,16 @@ contract BoostPool is ReentrancyGuard {
         emit RewardRateUpdated(_rewardRate);
     }
 
+    /// @dev set lock time and its weight
+    ///
+    /// @param _lockTime the lock time of the deposited order
+    /// @param _weighted the weighted of the deposited order
+    function setLockTimeWeighted(uint256 _lockTime, uint256 _weighted) external onlyGovernance {
+        lockTimeWeightedList.push(LockTimeWeighted({lockTime: _lockTime, weighted: _weighted}));
+
+        emit LockTimeWeightedSet(_lockTime, _weighted);
+    }
+
     /// @dev set cool down period
     ///
     /// @param _cooldownPeriod the cooldown period when user claims reward
@@ -171,14 +189,17 @@ contract BoostPool is ReentrancyGuard {
     /// @dev Stakes tokens into a pool.
     ///
     /// @param _depositAmount the amount of tokens to deposit.
-    function deposit(uint256 _depositAmount) external nonReentrant {
+    /// @param _index the index of the lock time weighted list
+    function deposit(uint256 _depositAmount, uint256 _index) external nonReentrant {
+        require(_index < lockTimeWeightedList.length, "invalid index");
+
         Pool.Data storage _pool = pool.get();
         _pool.update(_ctx);
 
         Stake.Data storage _stake = _stakes[msg.sender];
         _stake.update(_pool, _ctx);
 
-        _deposit(_depositAmount);
+        _deposit(_depositAmount, _index);
     }
 
     /// @dev Withdraws staked tokens from a pool.
@@ -194,16 +215,18 @@ contract BoostPool is ReentrancyGuard {
         require(_index.length <= userOrderCount[msg.sender], "invalid index");
 
         uint256 withdrawAmount;
+        uint256 weightedWithdrawAmount;
         for (uint256 i = 0; i < _index.length; i++) {
             UserDepositedOrder storage depositedOrder = userDepositedOrder[msg.sender][_index[i]];
             require(_index[i] < userOrderCount[msg.sender], "invalid index");
             require(!depositedOrder.isWithdraw, "The order has been withdrew");
-            require(depositedOrder.depositedTime.add(LOCK_TIME) < block.timestamp, "The lock time is not expired!");
+            require(depositedOrder.expiredTime < block.timestamp, "The lock time is not expired!");
             depositedOrder.isWithdraw = true;
             withdrawAmount = withdrawAmount.add(depositedOrder.amount);
+            weightedWithdrawAmount = weightedWithdrawAmount.add(depositedOrder.amount.mul(depositedOrder.weighted));
         }
 
-        _withdraw(withdrawAmount);
+        _withdraw(withdrawAmount, weightedWithdrawAmount);
     }
 
     /// @dev Claims all rewarded tokens from a pool.
@@ -293,6 +316,14 @@ contract BoostPool is ReentrancyGuard {
         return _pool.totalDeposited;
     }
 
+    /// @dev Gets the pool total deposited weight.
+    ///
+    /// @return the pool total deposited weight.
+    function getPoolTotalDepositedWeight() external view returns (uint256) {
+        Pool.Data storage _pool = pool.get();
+        return _pool.totalDepositedWeight;
+    }
+
     /// @dev Gets the number of tokens a user has staked into a pool.
     ///
     /// @param _account The account to query.
@@ -301,6 +332,16 @@ contract BoostPool is ReentrancyGuard {
     function getStakeTotalDeposited(address _account) external view returns (uint256) {
         Stake.Data storage _stake = _stakes[_account];
         return _stake.totalDeposited;
+    }
+
+    /// @dev Gets the user's deposited weight.
+    ///
+    /// @param _account The account to query.
+    ///
+    /// @return the account's total boost weight.
+    function getStakeTotalDepositedWeight(address _account) external view returns (uint256) {
+        Stake.Data storage _stake = _stakes[_account];
+        return _stake.totalDepositedWeight;
     }
 
     /// @dev Gets the number of unclaimed reward tokens a user can claim from a pool immediately.
@@ -341,20 +382,41 @@ contract BoostPool is ReentrancyGuard {
     /// @param _account The user account.
     /// @param _index The deposited order index.
     ///
-    /// @return amount the amount of user's deposited order.
-    /// @return depositedTime the user deposited time.
+    /// @return amount the amount of the deposited order.
+    /// @return expiredTime the expired time of the deposited order.
+    /// @return weighted the weighted of the deposited order
     /// @return isWithdraw the deposited order is withdraw or not.
     function getUserDepositOrderByIndex(address _account, uint256 _index)
         external
         view
         returns (
             uint256 amount,
-            uint256 depositedTime,
+            uint256 expiredTime,
+            uint256 weighted,
             bool isWithdraw
         )
     {
         UserDepositedOrder memory userDepositedOrder = userDepositedOrder[_account][_index];
-        return (userDepositedOrder.amount, userDepositedOrder.depositedTime, userDepositedOrder.isWithdraw);
+        return (userDepositedOrder.amount, userDepositedOrder.expiredTime, userDepositedOrder.weighted, userDepositedOrder.isWithdraw);
+    }
+
+    /// @dev Gets lock time weighted list length.
+    ///
+    /// @return the lock time weighted list length.
+    function getLockTimeWeightedListLength() external view returns (uint256) {
+        return lockTimeWeightedList.length;
+    }
+
+    /// @dev Gets the lock time and weighted of lock time weighted list by index.
+    ///
+    /// @param _index index.
+    ///
+    /// @return lockTime the lock time.
+    /// @return weighted the weighted when user locks the time.
+    function getLockTimeWeightedByIndex(uint256 _index) external view returns (uint256 lockTime, uint256 weighted) {
+        require(_index < lockTimeWeightedList.length, "invalid index");
+        LockTimeWeighted memory lockTimeWeight = lockTimeWeightedList[_index];
+        return (lockTimeWeight.lockTime, lockTimeWeight.weighted);
     }
 
     /// @dev Gets user's claim reward period.
@@ -373,23 +435,24 @@ contract BoostPool is ReentrancyGuard {
     /// The pool and stake MUST be updated before calling this function.
     ///
     /// @param _depositAmount the amount of tokens to deposit.
-    function _deposit(uint256 _depositAmount) internal {
+    /// @param _index the index of the lock time weighted list
+    function _deposit(uint256 _depositAmount, uint256 _index) internal {
         Pool.Data storage _pool = pool.get();
         Stake.Data storage _stake = _stakes[msg.sender];
+        LockTimeWeighted memory lockTimeWeight = lockTimeWeightedList[_index];
 
         _pool.totalDeposited = _pool.totalDeposited.add(_depositAmount);
         _stake.totalDeposited = _stake.totalDeposited.add(_depositAmount);
+        _pool.totalDepositedWeight = _pool.totalDepositedWeight.add(_depositAmount.mul(lockTimeWeight.weighted));
+        _stake.totalDepositedWeight = _stake.totalDepositedWeight.add(_depositAmount.mul(lockTimeWeight.weighted));
 
-        userDepositedOrder[msg.sender][userOrderCount[msg.sender]] = UserDepositedOrder({
-            amount: _depositAmount,
-            depositedTime: block.timestamp,
-            isWithdraw: false
-        });
+        userDepositedOrder[msg.sender][userOrderCount[msg.sender]] = UserDepositedOrder({amount: _depositAmount, expiredTime: block.timestamp.add(lockTimeWeight.lockTime), weighted: lockTimeWeight.weighted, isWithdraw: false});
+
         userOrderCount[msg.sender] = userOrderCount[msg.sender] + 1;
 
         _pool.token.transferFrom(msg.sender, address(this), _depositAmount);
 
-        emit TokensDeposited(msg.sender, _depositAmount);
+        emit TokensDeposited(msg.sender, _depositAmount, _depositAmount.mul(lockTimeWeight.weighted));
     }
 
     /// @dev Withdraws staked tokens from a pool.
@@ -397,16 +460,19 @@ contract BoostPool is ReentrancyGuard {
     /// The pool and stake MUST be updated before calling this function.
     ///
     /// @param _withdrawAmount  The number of tokens to withdraw.
-    function _withdraw(uint256 _withdrawAmount) internal {
+    /// @param _weightedWithdrawAmount The weighted withdraw amount
+    function _withdraw(uint256 _withdrawAmount, uint256 _weightedWithdrawAmount) internal {
         Pool.Data storage _pool = pool.get();
         Stake.Data storage _stake = _stakes[msg.sender];
 
         _pool.totalDeposited = _pool.totalDeposited.sub(_withdrawAmount);
         _stake.totalDeposited = _stake.totalDeposited.sub(_withdrawAmount);
+        _pool.totalDepositedWeight = _pool.totalDepositedWeight.sub(_weightedWithdrawAmount);
+        _stake.totalDepositedWeight = _stake.totalDepositedWeight.sub(_weightedWithdrawAmount);
 
         _pool.token.transfer(msg.sender, _withdrawAmount);
 
-        emit TokensWithdrawn(msg.sender, _withdrawAmount);
+        emit TokensWithdrawn(msg.sender, _withdrawAmount, _weightedWithdrawAmount);
     }
 
     /// @dev Claims all rewarded tokens from a pool.

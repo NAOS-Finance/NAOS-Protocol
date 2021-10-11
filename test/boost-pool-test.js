@@ -85,7 +85,7 @@ describe("BoostPool", () => {
       expect(await boostPool.getPoolToken()).equal(token.address);
       expect(await boostPool.reward()).equal(token.address);
       expect(await boostPool.governance()).equal(await governance.getAddress());
-      expect(await boostPool.cooldownPeriod()).equal(86400 * 5);
+      expect(await boostPool.cooldownPeriod()).equal(86400 * 7);
       expect(await boostPool.penaltyPercent()).equal(50);
     });
   });
@@ -261,6 +261,40 @@ describe("BoostPool", () => {
         });
       });
     });
+
+    context("create lock time weighted list", () => {
+      let lockTime0 = 3600;
+      let lockTime1 = 7200;
+      let weighted0 = 1;
+      let weighted1 = 2;
+
+      it("it reverts if the sender is not governance", () => {
+        expect(
+          boostPool.connect(deployer).setLockTimeWeighted(
+            lockTime0, weighted0
+          )
+        ).revertedWith("BoostPool: only governance");
+      });
+
+      context("when sender is current governance", () => {
+        beforeEach(() => {
+          boostPool = boostPool.connect(governance);
+        });
+
+        it("it creates the pools successfully", async () => {
+          await boostPool.setLockTimeWeighted(lockTime0, weighted0);
+          expect(await boostPool.getLockTimeWeightedListLength()).equal(1);
+          await boostPool.setLockTimeWeighted(lockTime1, weighted1);
+          expect(await boostPool.getLockTimeWeightedListLength()).equal(2);
+          let lockTimeWeighted = await boostPool.getLockTimeWeightedByIndex(0);
+          expect(lockTimeWeighted.lockTime).equal(lockTime0);
+          expect(lockTimeWeighted.weighted).equal(weighted0);
+          lockTimeWeighted = await boostPool.getLockTimeWeightedByIndex(1);
+          expect(lockTimeWeighted.lockTime).equal(lockTime1);
+          expect(lockTimeWeighted.weighted).equal(weighted1);
+        })
+      });
+    })
   })
 
   describe("deposit tokens", () => {
@@ -274,6 +308,10 @@ describe("BoostPool", () => {
     let depositAmount = parseEther('500');
     let secondDepositAmount = parseEther('300');
     let BobDepositAmount = parseEther('456');
+    let lockTime0 = 3600;
+    let lockTime1 = 7200;
+    let weighted0 = 2;
+    let weighted1 = 4;
 
     beforeEach(async () => {
       [deployer, governance, Alice, Bob, ...signers] = signers;
@@ -292,15 +330,20 @@ describe("BoostPool", () => {
       await token.connect(deployer).mint(Bob.getAddress(), mintToken);
       await token.connect(Alice).approve(boostPool.address, MAXIMUM_U256);
       await token.connect(Bob).approve(boostPool.address, MAXIMUM_U256);
-      await boostPool.connect(Alice).deposit(depositAmount);
+      await boostPool.connect(governance).setLockTimeWeighted(lockTime0, weighted0);
+      await boostPool.connect(governance).setLockTimeWeighted(lockTime1, weighted1);
+      await boostPool.connect(Alice).deposit(depositAmount, 0);
     });
 
     it("it increases total deposited amount", async () => {
       expect(await boostPool.getPoolTotalDeposited()).equal(depositAmount);
+      expect(await boostPool.getPoolTotalDepositedWeight()).equal(depositAmount.mul(weighted0));
     });
 
     it("it increases deposited amount", async () => {
       expect(await boostPool.getStakeTotalDeposited(await Alice.getAddress())).equal(depositAmount);
+      expect(await boostPool.getStakeTotalDepositedWeight(await Alice.getAddress())).equal(depositAmount.mul(weighted0));
+
     });
 
     it("it generate a user's deposited order", async () => {
@@ -309,7 +352,8 @@ describe("BoostPool", () => {
       expect(await boostPool.getUserOrderCount(await Alice.getAddress())).equal(1);
       const userDepositedOrder = await boostPool.getUserDepositOrderByIndex(await Alice.getAddress(), 0);
       expect(userDepositedOrder.amount).equal(depositAmount);
-      expect(userDepositedOrder.depositedTime).equal(block.timestamp);
+      expect(userDepositedOrder.expiredTime).equal(block.timestamp + lockTime0);
+      expect(userDepositedOrder.weighted).equal(weighted0);
       expect(userDepositedOrder.isWithdraw).equal(false);
     });
 
@@ -320,15 +364,17 @@ describe("BoostPool", () => {
 
     context("deposit again", () => {
       beforeEach(async () => {
-        await boostPool.connect(Alice).deposit(secondDepositAmount);
+        await boostPool.connect(Alice).deposit(secondDepositAmount, 1);
       });
 
       it("it increases total deposited amount", async () => {
         expect(await boostPool.getPoolTotalDeposited()).equal(depositAmount.add(secondDepositAmount));
+        expect(await boostPool.getPoolTotalDepositedWeight()).equal(depositAmount.mul(weighted0).add(secondDepositAmount.mul(weighted1)));
       });
 
       it("it increases deposited amount", async () => {
         expect(await boostPool.getStakeTotalDeposited(await Alice.getAddress())).equal(depositAmount.add(secondDepositAmount));
+        expect(await boostPool.getStakeTotalDepositedWeight(await Alice.getAddress())).equal(depositAmount.mul(weighted0).add(secondDepositAmount.mul(weighted1)));
       });
 
       it("it generate a user's deposited order", async () => {
@@ -337,7 +383,8 @@ describe("BoostPool", () => {
         expect(await boostPool.getUserOrderCount(await Alice.getAddress())).equal(2);
         const userDepositedOrder = await boostPool.getUserDepositOrderByIndex(await Alice.getAddress(), 1);
         expect(userDepositedOrder.amount).equal(secondDepositAmount);
-        expect(userDepositedOrder.depositedTime).equal(block.timestamp);
+        expect(userDepositedOrder.expiredTime).equal(block.timestamp + lockTime1);
+        expect(userDepositedOrder.weighted).equal(weighted1);
         expect(userDepositedOrder.isWithdraw).equal(false);
       });
 
@@ -349,7 +396,7 @@ describe("BoostPool", () => {
 
     context("another user deposits", () => {
       beforeEach(async () => {
-        await boostPool.connect(Bob).deposit(BobDepositAmount);
+        await boostPool.connect(Bob).deposit(BobDepositAmount, 1);
       });
 
       it("check origin user information", async () => {
@@ -359,16 +406,19 @@ describe("BoostPool", () => {
         expect(await boostPool.getUserOrderCount(await Alice.getAddress())).equal(1);
         const userDepositedOrder = await boostPool.getUserDepositOrderByIndex(await Alice.getAddress(), 0);
         expect(userDepositedOrder.amount).equal(depositAmount);
-        expect(userDepositedOrder.depositedTime).equal(block.timestamp);
+        expect(userDepositedOrder.expiredTime).equal(block.timestamp + lockTime0);
+        expect(userDepositedOrder.weighted).equal(weighted0);
         expect(userDepositedOrder.isWithdraw).equal(false);
       });
 
       it("it increases total deposited amount", async () => {
         expect(await boostPool.getPoolTotalDeposited()).equal(depositAmount.add(BobDepositAmount));
+        expect(await boostPool.getPoolTotalDepositedWeight()).equal(depositAmount.mul(weighted0).add(BobDepositAmount.mul(weighted1)));
       });
 
       it("it increases deposited amount", async () => {
         expect(await boostPool.getStakeTotalDeposited(await Bob.getAddress())).equal(BobDepositAmount);
+        expect(await boostPool.getStakeTotalDepositedWeight(await Bob.getAddress())).equal(BobDepositAmount.mul(weighted1));
       });
 
       it("it generate a user's deposited order", async () => {
@@ -377,7 +427,8 @@ describe("BoostPool", () => {
         expect(await boostPool.getUserOrderCount(await Bob.getAddress())).equal(1);
         const userDepositedOrder = await boostPool.getUserDepositOrderByIndex(await Bob.getAddress(), 0);
         expect(userDepositedOrder.amount).equal(BobDepositAmount);
-        expect(userDepositedOrder.depositedTime).equal(block.timestamp);
+        expect(userDepositedOrder.expiredTime).equal(block.timestamp + lockTime1);
+        expect(userDepositedOrder.weighted).equal(weighted1);
         expect(userDepositedOrder.isWithdraw).equal(false);
       });
 
@@ -398,6 +449,10 @@ describe("BoostPool", () => {
     let depositAmount = parseEther('500');
     let secondDepositAmount = parseEther('300');
     let thirdDepositAmount = parseEther('199');
+    let lockTime0 = 90 * 86400;
+    let lockTime1 = 365 * 86400;
+    let weighted0 = 2;
+    let weighted1 = 4;
 
     beforeEach(async () => {
       [deployer, governance, Alice, ...signers] = signers;
@@ -414,8 +469,10 @@ describe("BoostPool", () => {
       );
       await token.connect(deployer).mint(Alice.getAddress(), mintToken);
       await token.connect(Alice).approve(boostPool.address, MAXIMUM_U256);
-      await boostPool.connect(Alice).deposit(depositAmount);
-      await boostPool.connect(Alice).deposit(secondDepositAmount);
+      await boostPool.connect(governance).setLockTimeWeighted(lockTime0, weighted0);
+      await boostPool.connect(governance).setLockTimeWeighted(lockTime1, weighted1);
+      await boostPool.connect(Alice).deposit(depositAmount, 0);
+      await boostPool.connect(Alice).deposit(secondDepositAmount, 1);
     });
 
     it("it reverts if the withdraw index array is longer than deposited order count", () => {
@@ -434,15 +491,15 @@ describe("BoostPool", () => {
     });
 
     it("it reverts if the lock time of one of the order is not expired", async () => {
-      await timeFly(90 * 86400 + 1);
-      await boostPool.connect(Alice).deposit(thirdDepositAmount);
+      await timeFly(lockTime0 + 1);
+      await boostPool.connect(Alice).deposit(thirdDepositAmount, 1);
       expect(boostPool.connect(Alice).withdraw([0, 2])
       ).revertedWith("The lock time is not expired!");
     });
 
     context("it withdraws successfully", () => {
       beforeEach(async () => {
-        await timeFly(90 * 86400 + 1);
+        await timeFly(lockTime0 + 1);
         await boostPool.connect(Alice).withdraw([0]);
       });
 
@@ -453,10 +510,12 @@ describe("BoostPool", () => {
 
       it("it reduces total deposited amount", async () => {
         expect(await boostPool.getPoolTotalDeposited()).equal(secondDepositAmount);
+        expect(await boostPool.getPoolTotalDepositedWeight()).equal(secondDepositAmount.mul(weighted1));
       });
 
       it("it reduces deposited amount", async () => {
         expect(await boostPool.getStakeTotalDeposited(await Alice.getAddress())).equal(secondDepositAmount);
+        expect(await boostPool.getStakeTotalDepositedWeight(await Alice.getAddress())).equal(secondDepositAmount.mul(weighted1));
       });
 
       it("it updates a user's deposited order", async () => {
@@ -473,8 +532,8 @@ describe("BoostPool", () => {
 
     context("it withdraws two orders at one transaction successfully", () => {
       beforeEach(async () => {
-        await boostPool.connect(Alice).deposit(thirdDepositAmount);
-        await timeFly(90 * 86400 + 1);
+        await boostPool.connect(Alice).deposit(thirdDepositAmount, 1);
+        await timeFly(lockTime1 + 1);
         await boostPool.connect(Alice).withdraw([0, 2]);
       });
 
@@ -487,10 +546,12 @@ describe("BoostPool", () => {
 
       it("it reduces total deposited amount", async () => {
         expect(await boostPool.getPoolTotalDeposited()).equal(secondDepositAmount);
+        expect(await boostPool.getPoolTotalDepositedWeight()).equal(secondDepositAmount.mul(weighted1));
       });
 
       it("it reduces deposited amount", async () => {
         expect(await boostPool.getStakeTotalDeposited(await Alice.getAddress())).equal(secondDepositAmount);
+        expect(await boostPool.getStakeTotalDepositedWeight(await Alice.getAddress())).equal(secondDepositAmount.mul(weighted1));
       });
 
       it("it updates a user's deposited order", async () => {
@@ -498,7 +559,7 @@ describe("BoostPool", () => {
         expect(await boostPool.getUserOrderCount(await Alice.getAddress())).equal(3);
         userDepositedOrder = await boostPool.getUserDepositOrderByIndex(await Alice.getAddress(), 0);
         expect(userDepositedOrder.isWithdraw).equal(true);
-        userDepositedOrder = await boostPool.getUserDepositOrderByIndex(await Alice.getAddress(), 0);
+        userDepositedOrder = await boostPool.getUserDepositOrderByIndex(await Alice.getAddress(), 2);
         expect(userDepositedOrder.isWithdraw).equal(true);
       });
 
@@ -510,10 +571,12 @@ describe("BoostPool", () => {
       it("it can withdraw remaining order", async () => {
         await boostPool.connect(Alice).withdraw([1]);
         expect(await boostPool.getPoolTotalDeposited()).equal(0);
+        expect(await boostPool.getPoolTotalDepositedWeight()).equal(0);
         expect(await boostPool.getStakeTotalDeposited(await Alice.getAddress())).equal(0);
+        expect(await boostPool.getStakeTotalDepositedWeight(await Alice.getAddress())).equal(0);
       });
     });
-  })
+  });
 
   describe("claim rewards", () => {
     let deployer;
@@ -527,6 +590,11 @@ describe("BoostPool", () => {
     let depositAmount = parseEther('500');
     let BobDepositAmount = parseEther('300');
     let rewardRate = parseEther('600');
+    let lockTime0 = 90 * 86400;
+    let lockTime1 = 365 * 86400;
+    let weighted0 = 2;
+    let weighted1 = 4;
+    let tolerance = 1000;
 
     beforeEach(async () => {
       [deployer, governance, Alice, Bob, ...signers] = signers;
@@ -547,21 +615,23 @@ describe("BoostPool", () => {
       await token.connect(deployer).mint(boostPool.address, rewardToken);
       await token.connect(Alice).approve(boostPool.address, MAXIMUM_U256);
       await token.connect(Bob).approve(boostPool.address, MAXIMUM_U256);
-      await boostPool.connect(Alice).deposit(depositAmount);
-      await boostPool.connect(Bob).deposit(BobDepositAmount);
+      await boostPool.connect(governance).setLockTimeWeighted(lockTime0, weighted0);
+      await boostPool.connect(governance).setLockTimeWeighted(lockTime1, weighted1);
+      await boostPool.connect(Alice).deposit(depositAmount, 0);
+      await boostPool.connect(Bob).deposit(BobDepositAmount, 1);
       await mineBlocks(10);
     });
 
     it("user's reward matches the reward rate", async () => {
-      let totalDeposited = depositAmount.add(BobDepositAmount);
-      let AliceReward = rewardRate.add(rewardRate.mul(10).mul(depositAmount).div(totalDeposited));
-      let BobReward = rewardRate.mul(10).mul(BobDepositAmount).div(totalDeposited);
-      expect(await boostPool.getStakeTotalUnclaimed(await Alice.getAddress())).equal(AliceReward);
-      expect(await boostPool.getStakeTotalUnclaimed(await Bob.getAddress())).equal(BobReward);
-      expect(await boostPool.getStakeTotalUnclaimedImmediately(await Alice.getAddress())).equal(AliceReward.mul(await boostPool.penaltyPercent()).div(100));
-      expect(await boostPool.getStakeTotalUnclaimedImmediately(await Bob.getAddress())).equal(BobReward.mul(await boostPool.penaltyPercent()).div(100));
-
-    })
+      let totalDepositedWeight = await boostPool.getPoolTotalDepositedWeight();
+      expect(totalDepositedWeight).equal(depositAmount.mul(weighted0).add(BobDepositAmount.mul(weighted1)));
+      let AliceReward = rewardRate.add(rewardRate.mul(10).mul(depositAmount.mul(weighted0)).div(totalDepositedWeight));
+      let BobReward = rewardRate.mul(10).mul(BobDepositAmount.mul(weighted1)).div(totalDepositedWeight);
+      expect((await boostPool.getStakeTotalUnclaimed(await Alice.getAddress())).sub(AliceReward).abs()).to.be.at.most(tolerance);
+      expect((await boostPool.getStakeTotalUnclaimed(await Bob.getAddress())).sub(BobReward).abs()).to.be.at.most(tolerance);
+      expect((await boostPool.getStakeTotalUnclaimedImmediately(await Alice.getAddress())).sub(AliceReward.mul(await boostPool.penaltyPercent()).div(100)).abs()).to.be.at.most(tolerance);
+      expect((await boostPool.getStakeTotalUnclaimedImmediately(await Bob.getAddress())).sub(BobReward.mul(await boostPool.penaltyPercent()).div(100)).abs()).to.be.at.most(tolerance);
+    });
 
     context("claim reward immediately", () => {
       context("user has deposited token", () => {
@@ -579,14 +649,14 @@ describe("BoostPool", () => {
         });
 
         it("check the balance of users after user claims the reward immediately", async () => {
-          let totalDeposited = depositAmount.add(BobDepositAmount);
-          let unclaimAliceAmount = unclaimAliceRewardBefore.add(rewardRate.mul(depositAmount).div(totalDeposited));
-          let unclaimBobAmount = unclaimBobRewardBefore.add(rewardRate.mul(BobDepositAmount).div(totalDeposited));
+          let totalDepositedWeight = await boostPool.getPoolTotalDepositedWeight();
+          let unclaimAliceAmount = unclaimAliceRewardBefore.add(rewardRate.mul(depositAmount.mul(weighted0)).div(totalDepositedWeight));
+          let unclaimBobAmount = unclaimBobRewardBefore.add(rewardRate.mul(BobDepositAmount.mul(weighted1)).div(totalDepositedWeight));
           let penalty = unclaimAliceAmount.mul(await boostPool.penaltyPercent()).div(100);
-          expect(await boostPool.getStakeTotalUnclaimed(await Alice.getAddress())).equal(penalty.mul(depositAmount).div(totalDeposited));
-          expect(await boostPool.getStakeTotalUnclaimed(await Bob.getAddress())).equal(unclaimBobAmount.add(penalty.mul(BobDepositAmount).div(totalDeposited)))
-          expect(await token.balanceOf(boostPool.address)).equal(poolTokenBefore.sub(unclaimAliceAmount.sub(penalty)));
-          expect(await token.balanceOf(await Alice.getAddress())).equal(AliceTokenBefore.add(unclaimAliceAmount.sub(penalty)));
+          expect((await boostPool.getStakeTotalUnclaimed(await Alice.getAddress())).sub(penalty.mul(depositAmount.mul(weighted0)).div(totalDepositedWeight)).abs()).to.be.at.most(tolerance);
+          expect((await boostPool.getStakeTotalUnclaimed(await Bob.getAddress())).sub(unclaimBobAmount.add(penalty.mul(BobDepositAmount.mul(weighted1)).div(totalDepositedWeight))).abs()).to.be.at.most(tolerance);
+          expect((await token.balanceOf(boostPool.address)).sub(poolTokenBefore.sub(unclaimAliceAmount.sub(penalty))).abs()).to.be.at.most(tolerance);
+          expect((await token.balanceOf(await Alice.getAddress())).sub(AliceTokenBefore.add(unclaimAliceAmount.sub(penalty))).abs()).to.be.at.most(tolerance);
         });
 
         it("it reverts if pools has no enough rewards", async () => {
@@ -619,44 +689,11 @@ describe("BoostPool", () => {
           expect(await token.balanceOf(boostPool.address)).equal(poolTokenBefore.sub(unclaimAliceReward.sub(penalty)));
           expect(await token.balanceOf(await Alice.getAddress())).equal(AliceTokenBefore.add(unclaimAliceReward.sub(penalty)));
         });
-      })
-    })
+      });
+    });
 
     context("claim reward after cooldown period is expired", () => {
-      let deployer;
-      let governance;
-      let Alice;
-      let Bob;
-      let token;
-      let boostPool;
-      let mintToken = parseEther('1000');
-      let rewardToken = parseEther('100000');
-      let depositAmount = parseEther('500');
-      let BobDepositAmount = parseEther('300');
-      let rewardRate = parseEther('600');
-
       beforeEach(async () => {
-        [deployer, governance, Alice, Bob, ...signers] = signers;
-
-        token = (await ERC20MockFactory.connect(deployer).deploy(
-          "Mock DAI",
-          "DAI",
-          18
-        ));
-        boostPool = await BoostPoolFactory.connect(deployer).deploy(
-          token.address,
-          token.address,
-          governance.getAddress()
-        );
-        await boostPool.connect(governance).setRewardRate(rewardRate);
-        await token.connect(deployer).mint(Alice.getAddress(), mintToken);
-        await token.connect(deployer).mint(Bob.getAddress(), mintToken);
-        await token.connect(deployer).mint(boostPool.address, rewardToken);
-        await token.connect(Alice).approve(boostPool.address, MAXIMUM_U256);
-        await token.connect(Bob).approve(boostPool.address, MAXIMUM_U256);
-        await boostPool.connect(Alice).deposit(depositAmount);
-        await boostPool.connect(Bob).deposit(BobDepositAmount);
-        await mineBlocks(10);
         await boostPool.connect(Alice).startCoolDown();
       });
 
@@ -687,8 +724,7 @@ describe("BoostPool", () => {
 
       context("after cooldown period", () => {
         beforeEach(async () => {
-          let period = await boostPool.getUserClaimPeriod(await Alice.getAddress());
-          await timeFly(5 * 86400);
+          await timeFly(7 * 86400);
         });
 
         it("it reverts if user starts cooldown again", () => {
@@ -726,12 +762,12 @@ describe("BoostPool", () => {
           })
 
           it("check the balance of user after user claims the reward", async () => {
-            let totalDeposited = depositAmount.add(BobDepositAmount);
-            let unclaimAliceAmount = unclaimAliceRewardBefore.add(rewardRate.mul(depositAmount).div(totalDeposited));
+            let totalDepositedWeight = depositAmount.mul(weighted0).add(BobDepositAmount.mul(weighted1));
+            let unclaimAliceAmount = unclaimAliceRewardBefore.add(rewardRate.mul(depositAmount.mul(weighted0)).div(totalDepositedWeight));
             expect(await boostPool.getStakeTotalUnclaimed(await Alice.getAddress())).equal(0);
-            expect(await boostPool.getStakeTotalUnclaimed(await Bob.getAddress())).equal(unclaimBobRewardBefore.add(rewardRate.mul(BobDepositAmount).div(totalDeposited)));
-            expect(await token.balanceOf(boostPool.address)).equal(poolTokenBefore.sub(unclaimAliceAmount));
-            expect(await token.balanceOf(await Alice.getAddress())).equal(mintToken.sub(depositAmount).add(unclaimAliceAmount));
+            expect((await boostPool.getStakeTotalUnclaimed(await Bob.getAddress())).sub(unclaimBobRewardBefore.add(rewardRate.mul(BobDepositAmount.mul(weighted1)).div(totalDepositedWeight))).abs()).to.be.at.most(tolerance);
+            expect((await token.balanceOf(boostPool.address)).sub(poolTokenBefore.sub(unclaimAliceAmount)).abs()).to.be.at.most(tolerance);
+            expect((await token.balanceOf(await Alice.getAddress())).sub(mintToken.sub(depositAmount).add(unclaimAliceAmount)).abs()).to.be.at.most(tolerance);
           })
 
           it("claim period should be reset", async () => {
@@ -746,7 +782,7 @@ describe("BoostPool", () => {
         let claimPeriodBefore;
 
         beforeEach(async () => {
-          await timeFly(6 * 86400 + 1);
+          await timeFly(8 * 86400 + 1);
           claimPeriodBefore = await boostPool.getUserClaimPeriod(await Alice.getAddress());
         });
 
@@ -788,6 +824,11 @@ describe("BoostPool", () => {
     let depositAmount = parseEther('500');
     let BobDepositAmount = parseEther('300');
     let donateAmount = parseEther('100');
+    let lockTime0 = 90 * 86400;
+    let lockTime1 = 365 * 86400;
+    let weighted0 = 2;
+    let weighted1 = 4;
+    let tolerance = 1000;
 
     beforeEach(async () => {
       [deployer, governance, Alice, Bob, Peter, ...signers] = signers;
@@ -808,8 +849,10 @@ describe("BoostPool", () => {
       await token.connect(Alice).approve(boostPool.address, MAXIMUM_U256);
       await token.connect(Bob).approve(boostPool.address, MAXIMUM_U256);
       await token.connect(Peter).approve(boostPool.address, MAXIMUM_U256);
-      await boostPool.connect(Alice).deposit(depositAmount);
-      await boostPool.connect(Bob).deposit(BobDepositAmount);
+      await boostPool.connect(governance).setLockTimeWeighted(lockTime0, weighted0);
+      await boostPool.connect(governance).setLockTimeWeighted(lockTime1, weighted1);
+      await boostPool.connect(Alice).deposit(depositAmount, 0);
+      await boostPool.connect(Bob).deposit(BobDepositAmount, 1);
     });
 
     it("it reverts if user donates too much", () => {
@@ -822,12 +865,12 @@ describe("BoostPool", () => {
       let PoolTokenBefore = await token.balanceOf(boostPool.address);
       let AliceUnclaimBefore = await boostPool.getStakeTotalUnclaimed(await Alice.getAddress());
       let BobUnclaimBefore = await boostPool.getStakeTotalUnclaimed(await Bob.getAddress());
-      let totalDeposited = depositAmount.add(BobDepositAmount);
+      let totalDepositedWeight = depositAmount.mul(weighted0).add(BobDepositAmount.mul(weighted1));
       await boostPool.connect(Peter).donateReward(donateAmount);
       expect(await token.balanceOf(await Peter.getAddress())).equal(PeterTokenBefore.sub(donateAmount));
       expect(await token.balanceOf(boostPool.address)).equal(PoolTokenBefore.add(donateAmount));
-      expect(await boostPool.getStakeTotalUnclaimed(await Alice.getAddress())).equal(AliceUnclaimBefore.add(donateAmount.mul(depositAmount).div(totalDeposited)));
-      expect(await boostPool.getStakeTotalUnclaimed(await Bob.getAddress())).equal(BobUnclaimBefore.add(donateAmount.mul(BobDepositAmount).div(totalDeposited)));
-    })
+      expect((await boostPool.getStakeTotalUnclaimed(await Alice.getAddress())).sub(AliceUnclaimBefore.add(donateAmount.mul(depositAmount.mul(weighted0)).div(totalDepositedWeight))).abs()).to.be.at.most(tolerance);
+      expect((await boostPool.getStakeTotalUnclaimed(await Bob.getAddress())).sub(BobUnclaimBefore.add(donateAmount.mul(BobDepositAmount.mul(weighted1)).div(totalDepositedWeight))).abs()).to.be.at.most(tolerance);
+    });
   });
 });

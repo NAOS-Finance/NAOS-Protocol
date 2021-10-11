@@ -24,6 +24,7 @@ library Pool {
     struct Data {
         IERC20 token;
         uint256 totalDeposited;
+        uint256 totalDepositedWeight;
         FixedPointMath.uq192x64 accumulatedRewardWeight;
         uint256 lastUpdatedBlock;
     }
@@ -40,7 +41,7 @@ library Pool {
     ///
     /// @param _distributeAmount the amount will be distributed.
     function distribute(Data storage _data, uint256 _distributeAmount) internal {
-        FixedPointMath.uq192x64 memory distributeAmount = FixedPointMath.fromU256(_distributeAmount).div(_data.totalDeposited);
+        FixedPointMath.uq192x64 memory distributeAmount = FixedPointMath.fromU256(_distributeAmount).div(_data.totalDepositedWeight);
         _data.accumulatedRewardWeight = _data.accumulatedRewardWeight.add(distributeAmount);
     }
 
@@ -65,7 +66,7 @@ library Pool {
             return _data.accumulatedRewardWeight;
         }
 
-        FixedPointMath.uq192x64 memory _rewardWeight = FixedPointMath.fromU256(_distributeAmount).div(_data.totalDeposited);
+        FixedPointMath.uq192x64 memory _rewardWeight = FixedPointMath.fromU256(_distributeAmount).div(_data.totalDepositedWeight);
         return _data.accumulatedRewardWeight.add(_rewardWeight);
     }
 
@@ -73,6 +74,7 @@ library Pool {
     function set(Data storage _self, IERC20 _token) internal {
         _self.token = _token;
         _self.totalDeposited = 0;
+        _self.totalDepositedWeight = 0;
         _self.accumulatedRewardWeight = FixedPointMath.uq192x64(0);
         _self.lastUpdatedBlock = block.number;
     }
