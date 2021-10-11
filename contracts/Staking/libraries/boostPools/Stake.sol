@@ -29,9 +29,7 @@ library Stake {
         Pool.Context storage _ctx
     ) internal {
         _self.totalUnclaimed = _self.getUpdatedTotalUnclaimed(_pool, _ctx);
-        _self.lastAccumulatedWeight = _pool.getUpdatedAccumulatedRewardWeight(
-            _ctx
-        );
+        _self.lastAccumulatedWeight = _pool.getUpdatedAccumulatedRewardWeight(_ctx);
     }
 
     function getUpdatedTotalUnclaimed(
@@ -39,19 +37,14 @@ library Stake {
         Pool.Data storage _pool,
         Pool.Context storage _ctx
     ) internal view returns (uint256) {
-        FixedPointMath.uq192x64 memory _currentAccumulatedWeight = _pool
-            .getUpdatedAccumulatedRewardWeight(_ctx);
-        FixedPointMath.uq192x64 memory _lastAccumulatedWeight = _self
-            .lastAccumulatedWeight;
+        FixedPointMath.uq192x64 memory _currentAccumulatedWeight = _pool.getUpdatedAccumulatedRewardWeight(_ctx);
+        FixedPointMath.uq192x64 memory _lastAccumulatedWeight = _self.lastAccumulatedWeight;
 
         if (_currentAccumulatedWeight.cmp(_lastAccumulatedWeight) == 0) {
             return _self.totalUnclaimed;
         }
 
-        uint256 _distributedAmount = _currentAccumulatedWeight
-            .sub(_lastAccumulatedWeight)
-            .mul(_self.totalDeposited)
-            .decode();
+        uint256 _distributedAmount = _currentAccumulatedWeight.sub(_lastAccumulatedWeight).mul(_self.totalDeposited).decode();
 
         return _self.totalUnclaimed.add(_distributedAmount);
     }

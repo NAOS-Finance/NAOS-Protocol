@@ -8,7 +8,8 @@
   "scripts": {
     "compile": "npx hardhat compile",
     "test": "npx hardhat --network ganache test",
-    "test_local": "npx hardhat --network localhost test"
+    "test_local": "npx hardhat --network localhost test",
+    "prettier": "prettier --write 'contracts/**/*.sol'"
   },
   "devDependencies": {
     "@gnosis.pm/mock-contract": "github:gnosis/mock-contract#sol_0_5_0",
@@ -19,7 +20,9 @@
     "chai": "^4.3.4",
     "ethereum-waffle": "^3.3.0",
     "ethers": "^5.0.32",
-    "hardhat": "^2.1.2"
+    "hardhat": "^2.1.2",
+    "prettier": "^2.4.1",
+    "prettier-plugin-solidity": "^1.0.0-beta.18"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^3.2.0",
