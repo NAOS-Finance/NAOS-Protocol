@@ -179,7 +179,6 @@ contract StakingPoolsWithTransfer is ReentrancyGuard {
         Stake.Data storage _stake = _stakes[msg.sender][_poolId];
         _stake.update(_pool, _ctx);
 
-        _claim(_poolId);
         _withdraw(_poolId, _withdrawAmount);
     }
 
@@ -220,8 +219,8 @@ contract StakingPoolsWithTransfer is ReentrancyGuard {
         Pool.Data storage _pool = _pools.get(_poolId);
         _pool.update(_ctx);
 
-        _pool.distribute(_donateAmount);
         reward.transferFrom(msg.sender, address(this), _donateAmount);
+        _pool.distribute(_donateAmount);
     }
 
     /// @dev Gets the rate at which tokens are minted to stakers for all pools.

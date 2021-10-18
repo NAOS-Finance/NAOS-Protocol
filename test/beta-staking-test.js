@@ -466,6 +466,7 @@ describe("StakingPoolsWithTransfer", () => {
       let stakingPoolTokenBefore = await reward.balanceOf(stakingPools.address);
       await stakingPools.connect(Bob).withdraw(1, BobDepositAmount);
       BobPool1Reward = BobPool1Reward.add(rewardRate.mul(4).div(5).mul(BobDepositAmount).div(AliceDepositAmount.add(BobDepositAmount)));
+      await stakingPools.connect(Bob).claim(1);
       expect(await reward.balanceOf(Bob.getAddress())).equal(BobRewardAmount.add(BobPool1Reward).add(BobDepositAmount));
       expect(await reward.balanceOf(stakingPools.address)).equal(stakingPoolTokenBefore.sub(BobDepositAmount).sub(BobPool1Reward));
     });
