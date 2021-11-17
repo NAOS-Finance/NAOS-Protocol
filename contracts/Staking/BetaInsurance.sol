@@ -175,7 +175,7 @@ contract BetaInsurance is ERC20Upgradeable {
         IBetaTransmuter _transmuter,
         address _governance,
         address _treasury
-    ) public initializer {
+    ) external initializer {
         require(address(_token) != ZERO_ADDRESS, "token cannot be 0x0");
         require(address(_currency) != ZERO_ADDRESS, "currency cannot be 0x0");
         require(address(_naos) != ZERO_ADDRESS, "NAOS Token cannot be 0x0");
@@ -256,7 +256,7 @@ contract BetaInsurance is ERC20Upgradeable {
     /// @dev deposit tokens and get Beta tokens
     ///
     /// @param _amount The amount which will be deposited into the pool
-    function deposit(uint256 _amount) public {
+    function deposit(uint256 _amount) external {
         uint256 _pool = balance();
         token.transferFrom(msg.sender, address(this), _amount);
 
@@ -274,7 +274,7 @@ contract BetaInsurance is ERC20Upgradeable {
     /// @dev Burns beta tokens and withdraw deposited shares. If these is no enough tokens in the pool, it will pay  1:1 currency for user.
     ///
     /// @param _shares The amount of beta token
-    function withdraw(uint256 _shares) public {
+    function withdraw(uint256 _shares) external {
         uint256 r = (balance().mul(_shares)).div(totalSupply());
         require(balance().sub(r) >= lockAmount, "no enough quota");
         _burn(msg.sender, _shares);
