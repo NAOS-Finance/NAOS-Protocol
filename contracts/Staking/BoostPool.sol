@@ -273,7 +273,7 @@ contract BoostPool is ReentrancyGuard {
     }
 
     /// @dev lead user into cooldown period.
-    function startCoolDown() public nonReentrant {
+    function startCoolDown() external nonReentrant {
         Cooldown storage cooldown = userCooldown[msg.sender];
         require(cooldown.claimEnd < block.timestamp, "wait for the last cooldown period expired");
         cooldown.claimStart = block.timestamp + cooldownPeriod;
