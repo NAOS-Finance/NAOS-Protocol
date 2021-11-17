@@ -187,7 +187,7 @@ contract GalaxyStakingPools is ReentrancyGuardUpgradeable {
         ITranche _tranche,
         IOperator _operator,
         address _governance
-    ) public initializer {
+    ) external initializer {
         currency = _currency;
         token = _token;
         alpha = _alpha;
