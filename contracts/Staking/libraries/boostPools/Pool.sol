@@ -18,7 +18,6 @@ library Pool {
 
     struct Context {
         uint256 rewardRate;
-        uint256 totalRewardWeight;
     }
 
     struct Data {
