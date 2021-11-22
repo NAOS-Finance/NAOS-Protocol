@@ -258,14 +258,13 @@ contract BetaInsurance is ERC20Upgradeable {
     /// @param _amount The amount which will be deposited into the pool
     function deposit(uint256 _amount) external {
         uint256 _pool = balance();
-        token.transferFrom(msg.sender, address(this), _amount);
-
         uint256 shares = 0;
         if (totalSupply() == 0) {
             shares = _amount;
         } else {
             shares = (_amount.mul(totalSupply())).div(_pool);
         }
+        token.transferFrom(msg.sender, address(this), _amount);
         _mint(msg.sender, shares);
 
         emit TokenDeposited(msg.sender, _amount, shares);
@@ -539,10 +538,8 @@ contract BetaInsurance is ERC20Upgradeable {
     /// @param _insuranceID the insurance ID.
     function payPremiumByNAOS(uint256 _insuranceID) external beforePaymentCheck(_insuranceID) {
         InsurancePolicy storage insurancePolicy = insurancePolicyList[_insuranceID];
-
-        naos.transferFrom(msg.sender, address(this), insurancePolicy.premiumNAOSAmount);
-
         _activateInsurance(insurancePolicy, _insuranceID, insurancePolicy.premiumNAOSAmount);
+        naos.transferFrom(msg.sender, address(this), insurancePolicy.premiumNAOSAmount);
     }
 
     /// @dev If bad debt happens, the governance can call this function to let the issuer receive compensation
