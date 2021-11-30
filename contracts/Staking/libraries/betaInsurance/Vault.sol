@@ -95,6 +95,31 @@ library Vault {
         return (_withdrawnAmount, _decreasedValue);
     }
 
+    /// @dev This function is used for harvest function to get the yield
+    ///
+    /// @param _recipient the account to withdraw the tokens to.
+    /// @param _amount    the amount of tokens to withdraw.
+    function indirectWithdraw(
+        Data storage _self,
+        address _recipient,
+        uint256 _amount
+    ) internal returns (uint256, uint256) {
+        IERC20 _token = _self.token();
+
+        uint256 _startingBalance = _token.balanceOf(_recipient);
+        uint256 _startingTotalValue = _self.totalValue();
+
+        _self.adapter.indirectWithdraw(_recipient, _amount);
+
+        uint256 _endingBalance = _token.balanceOf(_recipient);
+        uint256 _withdrawnAmount = _endingBalance.sub(_startingBalance);
+
+        uint256 _endingTotalValue = _self.totalValue();
+        uint256 _decreasedValue = _startingTotalValue.sub(_endingTotalValue);
+
+        return (_withdrawnAmount, _decreasedValue);
+    }
+
     /// @dev Withdraw all the deposited funds from the vault.
     ///
     /// @param _recipient the account to withdraw the tokens to.
@@ -110,7 +135,7 @@ library Vault {
             return (0, 0);
         }
         uint256 _withdrawAmount = _self.totalValue().sub(_self.totalDeposited);
-        return _self.directWithdraw(_recipient, _withdrawAmount);
+        return _self.indirectWithdraw(_recipient, _withdrawAmount);
     }
 
     /// @dev Adds a element to the list.
