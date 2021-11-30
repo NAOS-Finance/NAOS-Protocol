@@ -640,7 +640,7 @@ describe("Beta Insurance Token", () => {
                             });
 
                             context("token donate to staking pool", async () => {
-                                let tolerance = 1000;
+                                let tolerance = 2000;
 
                                 it("it distribute naos to staking pool linearly", async () => {
                                     let stakingPool = await StakingPool.deploy(naos.address, await governance.getAddress());

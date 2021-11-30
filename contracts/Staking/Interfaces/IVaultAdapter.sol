@@ -23,4 +23,12 @@ interface IVaultAdapter {
     /// @param _recipient the recipient of the funds.
     /// @param _amount    the amount of funds to withdraw.
     function withdraw(address _recipient, uint256 _amount) external;
+
+    /// @dev Attempts to withdraw funds from the wrapped vault.
+    ///
+    /// The amount withdrawn to the recipient may be less than the amount requested.
+    ///
+    /// @param _recipient the recipient of the funds.
+    /// @param _amount    the amount of funds to withdraw.
+    function indirectWithdraw(address _recipient, uint256 _amount) external;
 }

@@ -74,6 +74,16 @@ contract YearnVaultAdapter is IVaultAdapter {
         vault.withdraw(_tokensToShares(_amount), _recipient);
     }
 
+    /// @dev Sends vault tokens to the recipient
+    ///
+    /// This function reverts if the caller is not the admin.
+    ///
+    /// @param _recipient the account to send the tokens to.
+    /// @param _amount    the amount of tokens to send.
+    function indirectWithdraw(address _recipient, uint256 _amount) external override onlyAdmin {
+        vault.withdraw(_tokensToShares(_amount), _recipient);
+    }
+
     /// @dev Updates the vaults approval of the token to be the maximum value.
     function updateApproval() public {
         address _token = vault.token();
