@@ -1,27 +1,25 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.6.0;
+pragma solidity 0.6.12;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721Burnable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
-import "@openzeppelin/contracts/utils/Counters.sol";
 
-contract Nebula is ERC721, Ownable {
+contract NFT is ERC721, ERC721Burnable, Ownable {
     using Counters for Counters.Counter;
     Counters.Counter private _tokenIds;
 
-    constructor() public ERC721("Nebula", "NAOS") {}
+    constructor() public ERC721("NFT", "NFT") {}
 
-    function safeMint(address to, string memory tokenURI) public onlyOwner {
+    function safeMint(address to, string memory tokenURI) external onlyOwner {
         uint256 tokenId = _tokenIds.current();
         _safeMint(to, tokenId);
         _setTokenURI(tokenId, tokenURI);
         _tokenIds.increment();
     }
 
-    function burn(uint256 tokenId) public onlyOwner {
-        require(_exists(tokenId), "token does not exist");
-        _burn(tokenId);
+    function getNextTokenId() external view returns (uint256) {
+        return _tokenIds.current();
     }
 }
