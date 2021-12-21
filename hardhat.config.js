@@ -38,6 +38,15 @@ module.exports = {
           }
         }
       },
+      {
+        version: "0.7.5",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200
+          }
+        }
+      }
     ],
   },
   defaultNetwork: "ganache",
