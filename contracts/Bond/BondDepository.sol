@@ -594,14 +594,6 @@ interface IBondCalculator {
     function markdown( address _LP ) external view returns ( uint );
 }
 
-interface IStaking {
-    function stake( uint _amount, address _recipient ) external returns ( bool );
-}
-
-interface IStakingHelper {
-    function stake( uint _amount, address _recipient ) external;
-}
-
 contract BondDepository is Ownable {
 
     using FixedPoint for *;
@@ -630,10 +622,6 @@ contract BondDepository is Ownable {
 
     bool public immutable isLiquidityBond; // LP and Reserve bonds are treated slightly different
     address public immutable bondCalculator; // calculates value of LP tokens
-
-    address public staking; // to auto-stake payout
-    address public stakingHelper; // to stake and claim if no staking warmup
-    bool public useHelper;
 
     Terms public terms; // stores terms for new bonds
     Adjust public adjustment; // stores adjustment to BCV data
@@ -775,23 +763,6 @@ contract BondDepository is Ownable {
         });
     }
 
-    /**
-     *  @notice set contract for auto stake
-     *  @param _staking address
-     *  @param _helper bool
-     */
-    function setStaking( address _staking, bool _helper ) external onlyPolicy() {
-        require( _staking != address(0) );
-        if ( _helper ) {
-            useHelper = true;
-            stakingHelper = _staking;
-        } else {
-            useHelper = false;
-            staking = _staking;
-        }
-    }
-
-
     
 
     /* ======== USER FUNCTIONS ======== */
@@ -861,14 +832,14 @@ contract BondDepository is Ownable {
      *  @param _stake bool
      *  @return uint
      */ 
-    function redeem( address _recipient, bool _stake ) external returns ( uint ) {        
+    function redeem( address _recipient ) external returns ( uint ) {        
         Bond memory info = bondInfo[ _recipient ];
         uint percentVested = percentVestedFor( _recipient ); // (blocks since last interaction / vesting term remaining)
 
         if ( percentVested >= 10000 ) { // if fully vested
             delete bondInfo[ _recipient ]; // delete user info
             emit BondRedeemed( _recipient, info.payout, 0 ); // emit bond data
-            return stakeOrSend( _recipient, _stake, info.payout ); // pay user everything due
+            return send( _recipient, info.payout ); // pay user everything due
 
         } else { // if unfinished
             // calculate payout vested
@@ -883,7 +854,7 @@ contract BondDepository is Ownable {
             });
 
             emit BondRedeemed( _recipient, payout, bondInfo[ _recipient ].payout );
-            return stakeOrSend( _recipient, _stake, payout );
+            return send( _recipient, payout );
         }
     }
 
@@ -893,23 +864,12 @@ contract BondDepository is Ownable {
     /* ======== INTERNAL HELPER FUNCTIONS ======== */
 
     /**
-     *  @notice allow user to stake payout automatically
-     *  @param _stake bool
+     *  @notice allow user to transfer OHM
      *  @param _amount uint
      *  @return uint
      */
-    function stakeOrSend( address _recipient, bool _stake, uint _amount ) internal returns ( uint ) {
-        if ( !_stake ) { // if user does not want to stake
-            IERC20( OHM ).transfer( _recipient, _amount ); // send payout
-        } else { // if user wants to stake
-            if ( useHelper ) { // use if staking warmup is 0
-                IERC20( OHM ).approve( stakingHelper, _amount );
-                IStakingHelper( stakingHelper ).stake( _amount, _recipient );
-            } else {
-                IERC20( OHM ).approve( staking, _amount );
-                IStaking( staking ).stake( _amount, _recipient );
-            }
-        }
+    function send( address _recipient, uint _amount ) internal returns ( uint ) {
+        IERC20( OHM ).transfer( _recipient, _amount );
         return _amount;
     }
 

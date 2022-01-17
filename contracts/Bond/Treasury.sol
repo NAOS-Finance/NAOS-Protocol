@@ -282,8 +282,8 @@ contract Treasury is Ownable {
         isReserveToken[ _Frax] = true;
         reserveTokens.push( _Frax );
 
-       isLiquidityToken[ _OHMDAI ] = true;
-       liquidityTokens.push( _OHMDAI );
+        isLiquidityToken[ _OHMDAI ] = true;
+        liquidityTokens.push( _OHMDAI );
 
         blocksNeededForQueue = _blocksNeededForQueue;
     }
